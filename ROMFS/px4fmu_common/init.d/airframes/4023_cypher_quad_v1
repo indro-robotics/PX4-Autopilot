@@ -112,13 +112,13 @@ param set-default RC_MAP_YAW 4
 param set-default MIS_TAKEOFF_ALT 1.0
 
 # MPC
-param set-default MPC_LAND_ALT3 1.5
-param set-default MPC_LAND_CRWL 0.75
+param set-default MPC_LAND_ALT3 0.4
+param set-default MPC_LAND_CRWL 3.0
 param set-default MPC_LAND_RC_HELP 1
-param set-default MPC_LAND_SPEED 0.75
+param set-default MPC_LAND_SPEED 0.7
 param set-default MPC_THR_HOVER 0.45
-param set-default MPC_TKO_RAMP_T 1.0
-param set-default MPC_TKO_SPEED 1.0
+param set-default MPC_TKO_RAMP_T 0.5
+param set-default MPC_TKO_SPEED 1.5
 
 # AUX
 param set-default PWM_AUX_FUNC1 101
@@ -135,3 +135,8 @@ param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
 param set-default BAT1_V_EMPTY 2.7
 param set-default BAT1_V_LOAD_DROP 0.42
+param set-default BAT2_N_CELLS 6
+param set-default BAT2_SOURCE 0
+param set-default BAT2_V_CHARGED 4.2
+param set-default BAT2_V_EMPTY 2.7
+param set-default BAT2_V_LOAD_DROP 0.42
