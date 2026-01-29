@@ -11,6 +11,11 @@ set -e
 ## - jMAVSim and Gazebo9 simulator (omit with arg: --no-sim-tools)
 ##
 
+SYM_DIR="$HOME/symforce"
+SYM_REPO="https://github.com/symforce-org/symforce.git"
+SYM_TAG="v0.10.1"
+
+
 INSTALL_NUTTX="true"
 INSTALL_SIM="true"
 INSTALL_ARCH=`uname -m`
@@ -94,11 +99,13 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -y --quiet --no-install-recommends i
 	python3-pip \
 	python3-setuptools \
 	python3-wheel \
+	python3-venv \
 	rsync \
 	shellcheck \
 	unzip \
 	zip \
 	;
+
 
 # Python3 dependencies
 echo
@@ -106,9 +113,43 @@ echo "Installing PX4 Python3 dependencies"
 if [ -n "$VIRTUAL_ENV" ]; then
 	# virtual environments don't allow --user option
 	python -m pip install -r ${DIR}/requirements.txt
+
 else
 	# older versions of Ubuntu require --user option
 	python3 -m pip install --user -r ${DIR}/requirements.txt
+fi
+
+# Start handling symforce directly...
+if [ -d "${SYM_DIR}/.git" ]; then
+    cd "${SYM_DIR}"
+    echo "SymForce repo already exists, updating..."
+    git fetch --tags
+else
+    git clone "${SYM_REPO}" "${SYM_DIR}"
+    cd "${SYM_DIR}"
+fi
+
+git checkout "${SYM_TAG}"
+
+cp -f "$HOME/workspaces/local_ws/auxiliary/symforce_patch/setup.py" \
+      "$HOME/symforce/setup.py"
+
+python3 -m build --wheel third_party/skymarshal
+pip install third_party/skymarshal/dist/skymarshal-*.whl
+
+python3 -m build --wheel gen/python
+pip install gen/python/dist/symforce_sym-*.whl
+
+python3 -c "import skymarshal, pkg_resources; print(skymarshal.__file__, pkg_resources.get_distribution('skymarshal'))"
+
+pip install --user --no-build-isolation .
+
+EXPORT_LINE='export PYTHONPATH="$HOME/symforce:$PYTHONPATH"'
+if ! grep -Fxq "${EXPORT_LINE}" "$HOME/.bashrc"; then
+    echo "${EXPORT_LINE}" >> "$HOME/.bashrc"
+    echo "Added PYTHONPATH export to ~/.bashrc"
+else
+    echo "PYTHONPATH export for symforce already present in ~/.bashrc"
 fi
 
 # NuttX toolchain (arm-none-eabi-gcc)
@@ -123,8 +164,6 @@ if [[ $INSTALL_NUTTX == "true" ]]; then
 		bison \
 		build-essential \
 		flex \
-		#g++-multilib \
-		#gcc-multilib \
 		gdb-multiarch \
 		genromfs \
 		gettext \
