@@ -50,6 +50,9 @@ publications:
   - topic: /fmu/out/vehicle_land_detected
     type: px4_msgs::msg::VehicleLandDetected
 
+  - topic: /fmu/out/input_rc
+    type: px4_msgs::msg::InputRc
+
 # Create uORB::Publication
 subscriptions:
 
