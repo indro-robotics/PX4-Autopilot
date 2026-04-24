@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# @name Cypher Quad V1
+# @name ARID Quad V1.1
 #
 # @type Quadrotor x
 # @class Copter
@@ -72,14 +72,14 @@ param set-default EKF2_IMU_POS_Z -0.100499
 param set-default EKF2_OF_CTRL 1
 param set-default EKF2_OF_POS_X 0.0
 param set-default EKF2_OF_POS_Y 0.0115
-param set-default EKF2_OF_POS_Z 0.00831
+param set-default EKF2_OF_POS_Z 0.008518
 param set-default EKF2_OF_QMIN 100
 param set-default EKF2_OF_QMIN_GND 100
 
 # RNG
-param set-default EKF2_RNG_POS_X -0.004178
-param set-default EKF2_RNG_POS_Y 0.00992
-param set-default EKF2_RNG_POS_Z 0.013431
+param set-default EKF2_RNG_POS_X -0.001322
+param set-default EKF2_RNG_POS_Y -0.00992
+param set-default EKF2_RNG_POS_Z -0.011096
 
 # COM
 param set-default COM_FLTMODE1 2
@@ -109,11 +109,11 @@ param set-default RC_MAP_THROTTLE 1
 param set-default RC_MAP_YAW 4
 
 # AUTO
-param set-default MIS_TAKEOFF_ALT 1.0
+param set-default MIS_TAKEOFF_ALT 1.5
 
 # MPC
-param set-default MPC_LAND_ALT3 0.4
-param set-default MPC_LAND_CRWL 3.0
+param set-default MPC_LAND_ALT3 1.5
+param set-default MPC_LAND_CRWL 0.75
 param set-default MPC_LAND_RC_HELP 1
 param set-default MPC_LAND_SPEED 0.7
 param set-default MPC_THR_HOVER 0.45
@@ -135,9 +135,3 @@ param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
 param set-default BAT1_V_EMPTY 2.7
 param set-default BAT1_V_LOAD_DROP 0.42
-param set-default BAT2_N_CELLS 6
-param set-default BAT2_R_INTERNAL 0.0035
-param set-default BAT2_SOURCE 0
-param set-default BAT2_V_CHARGED 4.2
-param set-default BAT2_V_EMPTY 2.7
-param set-default BAT2_V_LOAD_DROP 0.42
