@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# @name Cypher Quad V1
+# @name Cypher Skid
 #
 # @type Quadrotor x
 # @class Copter
@@ -133,11 +133,17 @@ param set-default BAT1_N_CELLS 6
 param set-default BAT1_R_INTERNAL 0.0035
 param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
-param set-default BAT1_V_EMPTY 2.7
+param set-default BAT1_V_EMPTY 2.8
 param set-default BAT1_V_LOAD_DROP 0.42
+param set-default BAT2_CAPACITY -1
 param set-default BAT2_N_CELLS 6
 param set-default BAT2_R_INTERNAL 0.0035
 param set-default BAT2_SOURCE 0
 param set-default BAT2_V_CHARGED 4.2
-param set-default BAT2_V_EMPTY 2.7
+param set-default BAT2_V_EMPTY 2.8
 param set-default BAT2_V_LOAD_DROP 0.42
+
+# POWER MODULE
+param set-default SENS_EN_INA226 0
+param set-default SENS_EN_INA238 1
+param set-default INA238_SHUNT 0.0001
