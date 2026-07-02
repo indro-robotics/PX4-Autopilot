@@ -30,6 +30,7 @@ param set-default MOT_POLE_COUNT 12
 param set-default SER_TEL2_BAUD 3000000
 param set-default UXRCE_DDS_CFG 102
 param set-default UXRCE_DDS_DOM_ID 23
+param set-default UXRCE_DDS_PTCFG 1
 
 # SENSORS
 param set-default SYS_HAS_BARO 0
