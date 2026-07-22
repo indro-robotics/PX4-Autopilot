@@ -1,0 +1,138 @@
+#!/bin/sh
+#
+# @name ARID Quad V1.2
+#
+# @type Quadrotor x
+# @class Copter
+#
+# @maintainer Calvin Rubens <calvin.rubens@indrorobotics.com>
+#
+
+. ${R}etc/init.d/rc.mc_defaults
+
+# GEOMETRY
+param set-default CA_ROTOR_COUNT 4
+param set-default CA_ROTOR1_KM -0.05
+param set-default CA_ROTOR2_KM -0.05
+
+# MOTORS
+param set-default CA_ROTOR0_PX -0.1
+param set-default CA_ROTOR0_PY -0.1
+param set-default CA_ROTOR1_PX 0.1
+param set-default CA_ROTOR1_PY -0.1
+param set-default CA_ROTOR2_PX -0.1
+param set-default CA_ROTOR2_PY 0.1
+param set-default CA_ROTOR3_PX 0.1
+param set-default CA_ROTOR3_PY 0.1
+param set-default MOT_POLE_COUNT 12
+
+# COMMS
+param set-default SER_TEL2_BAUD 3000000
+param set-default UXRCE_DDS_CFG 102
+param set-default UXRCE_DDS_DOM_ID 23
+param set-default UXRCE_DDS_PTCFG 1
+
+# SENSORS
+param set-default SYS_HAS_BARO 0
+param set-default SYS_HAS_GPS 0
+param set-default SYS_HAS_MAG 0
+param set-default SENS_BOARD_ROT 14
+
+# UAVCAN
+param set-default UAVCAN_SUB_FLOW 1
+param set-default UAVCAN_SUB_IMU 1
+param set-default UAVCAN_SUB_MAG 0
+param set-default UAVCAN_SUB_RNG 1
+param set-default UAVCAN_RNG_MAX 50.0
+param set-default UAVCAN_RNG_MIN 0.08
+
+# OF
+param set-default SENS_FLOW_MAXHGT 25.0
+param set-default SENS_FLOW_MAXR 7.4
+param set-default SENS_FLOW_MINHGT 0.08
+
+# MAG
+param set-default CAL_MAG0_PRIO 0
+
+# EKF2
+param set-default EKF2_BARO_CTRL 0
+param set-default EKF2_EV_CTRL 11
+param set-default EKF2_EV_NOISE_MD 1
+param set-default EKF2_GPS_CTRL 0
+param set-default EKF2_HGT_REF 3
+param set-default EKF2_RNG_K_GATE 0.30
+param set-default EKF2_RNG_A_IGATE 0.30
+param set-default EKF2_RNG_A_HMAX 10.0
+
+# IMU
+param set-default EKF2_IMU_POS_X 0.042524
+param set-default EKF2_IMU_POS_Y 0.0
+param set-default EKF2_IMU_POS_Z -0.100499
+
+# OF
+param set-default EKF2_OF_CTRL 1
+param set-default EKF2_OF_POS_X 0.0
+param set-default EKF2_OF_POS_Y 0.0115
+param set-default EKF2_OF_POS_Z 0.008518
+param set-default EKF2_OF_QMIN 100
+param set-default EKF2_OF_QMIN_GND 100
+
+# RNG
+param set-default EKF2_RNG_POS_X -0.001322
+param set-default EKF2_RNG_POS_Y -0.00992
+param set-default EKF2_RNG_POS_Z -0.011096
+
+# COM
+param set-default COM_FLTMODE1 2
+param set-default COM_FLTMODE4 2
+param set-default COM_FLTMODE6 2
+param set-default COM_DISARM_LAND 1.0
+param set-default COM_LOW_BAT_ACT 2
+param set-default COM_OBL_RC_ACT 4
+param set-default COM_OF_LOSS_T 5.0
+param set-default COM_POSCTL_NAVL 1
+param set-default COM_RC_IN_MODE 0
+param set-default COM_RC_LOSS_T 2.0
+param set-default COM_RC_OVERRIDE 3
+param set-default COM_RC_STICK_OV 20.0
+param set-default MAN_ARM_GESTURE 0
+param set-default NAV_RCL_ACT 3
+
+# RC
+param set-default RC_CHAN_CNT 16
+param set-default RC_INPUT_PROTO 6
+param set-default RC_MAP_ARM_SW 5
+param set-default RC_MAP_FLTMODE 6
+param set-default RC_MAP_KILL_SW 8
+param set-default RC_MAP_PITCH 3
+param set-default RC_MAP_ROLL 2
+param set-default RC_MAP_THROTTLE 1
+param set-default RC_MAP_YAW 4
+
+# AUTO
+param set-default MIS_TAKEOFF_ALT 1.5
+
+# MPC
+param set-default MPC_LAND_ALT3 1.5
+param set-default MPC_LAND_CRWL 0.75
+param set-default MPC_LAND_RC_HELP 1
+param set-default MPC_LAND_SPEED 0.7
+param set-default MPC_THR_HOVER 0.45
+param set-default MPC_TKO_RAMP_T 0.5
+param set-default MPC_TKO_SPEED 1.5
+
+# AUX
+param set-default PWM_AUX_FUNC1 101
+param set-default PWM_AUX_FUNC2 102
+param set-default PWM_AUX_FUNC3 103
+param set-default PWM_AUX_FUNC4 104
+param set-default PWM_AUX_TIM0 -3
+
+# POWER
+param set-default BAT1_CAPACITY 10000
+param set-default BAT1_N_CELLS 6
+param set-default BAT1_R_INTERNAL 0.0035
+param set-default BAT1_SOURCE 0
+param set-default BAT1_V_CHARGED 4.2
+param set-default BAT1_V_EMPTY 2.7
+param set-default BAT1_V_LOAD_DROP 0.42
