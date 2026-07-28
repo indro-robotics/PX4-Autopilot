@@ -78,6 +78,11 @@ param set-default EKF2_OF_QMIN 100
 param set-default EKF2_OF_QMIN_GND 100
 
 # RNG
+# Unconditional range height aiding keeps a vertical aiding source alive when EV drops,
+# so local altitude stays valid and Descend/Land remain runnable instead of Terminate.
+# EV remains the height reference (EKF2_HGT_REF 3): range cannot move the datum, so the
+# vehicle does not follow terrain over the AMR or shelving.
+param set-default EKF2_RNG_CTRL 2
 param set-default EKF2_RNG_POS_X -0.001622
 param set-default EKF2_RNG_POS_Y -0.01792
 param set-default EKF2_RNG_POS_Z 0.010135
