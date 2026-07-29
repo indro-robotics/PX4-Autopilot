@@ -114,6 +114,9 @@ param set-default RC_MAP_YAW 4
 param set-default MIS_TAKEOFF_ALT 1.5
 
 # MPC
+# Altitude following. The firmware default (2, terrain hold) holds height above ground
+# while stationary, so a hands-off hover climbs when an AMR passes underneath.
+param set-default MPC_ALT_MODE 0
 param set-default MPC_LAND_ALT3 1.5
 param set-default MPC_LAND_CRWL 0.75
 param set-default MPC_LAND_RC_HELP 1
