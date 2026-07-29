@@ -118,9 +118,12 @@ void getModeRequirements(uint8_t vehicle_type, failsafe_flags_s &flags)
 	setRequirement(vehicle_status_s::NAVIGATION_STATE_ACRO, flags.mode_req_manual_control);
 
 	// NAVIGATION_STATE_DESCEND
+	// No local-altitude requirement: the failsafe ladder falls through to Terminate (motor
+	// lockdown) when Descend cannot run, and generateFailsafeSetpoint degrades to an open-loop
+	// below-hover-thrust descent with no altitude reference. Altitude loss costs a controlled
+	// descent, never a motor cut in flight.
 	setRequirement(vehicle_status_s::NAVIGATION_STATE_DESCEND, flags.mode_req_angular_velocity);
 	setRequirement(vehicle_status_s::NAVIGATION_STATE_DESCEND, flags.mode_req_attitude);
-	setRequirement(vehicle_status_s::NAVIGATION_STATE_DESCEND, flags.mode_req_local_alt);
 	setRequirement(vehicle_status_s::NAVIGATION_STATE_DESCEND, flags.mode_req_prevent_arming);
 
 	// NAVIGATION_STATE_TERMINATION
