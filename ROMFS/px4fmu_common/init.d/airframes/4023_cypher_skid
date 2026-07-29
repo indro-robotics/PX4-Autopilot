@@ -80,8 +80,8 @@ param set-default EKF2_OF_QMIN_GND 100
 # RNG
 # Unconditional range height aiding keeps a vertical aiding source alive when EV drops,
 # so local altitude stays valid and Descend/Land remain runnable instead of Terminate.
-# EV remains the height reference (EKF2_HGT_REF 3): range cannot move the datum, so the
-# vehicle does not follow terrain over the AMR or shelving.
+# EV is the height reference (EKF2_HGT_REF 3) only while EV height fusion runs. On an EV
+# dropout range becomes the reference by fallback, and the datum then tracks the ground.
 param set-default EKF2_RNG_CTRL 2
 param set-default EKF2_RNG_POS_X -0.001622
 param set-default EKF2_RNG_POS_Y -0.01792
@@ -118,6 +118,9 @@ param set-default RC_MAP_YAW 4
 param set-default MIS_TAKEOFF_ALT 1.0
 
 # MPC
+# Altitude following. The firmware default (2, terrain hold) holds height above ground
+# while stationary, so a hands-off hover climbs when an AMR passes underneath.
+param set-default MPC_ALT_MODE 0
 param set-default MPC_LAND_ALT3 0.4
 param set-default MPC_LAND_CRWL 3.0
 param set-default MPC_LAND_RC_HELP 1
