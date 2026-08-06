@@ -60,9 +60,17 @@ param set-default EKF2_EV_CTRL 11
 param set-default EKF2_EV_NOISE_MD 1
 param set-default EKF2_GPS_CTRL 0
 param set-default EKF2_HGT_REF 3
+# Unconditional range height aiding keeps a vertical aiding source alive when EV drops, so local
+# altitude stays valid and Descend/Land remain runnable instead of Terminate.
 param set-default EKF2_RNG_CTRL 2
-param set-default EKF2_RNG_K_GATE 0.30
-param set-default EKF2_RNG_A_IGATE 0.30
+# De-weights range against EV on the height state: a floor step pulls centimetres instead of
+# decimetres, while the sensor keeps fusing and stays promotable on EV loss.
+param set-default EKF2_RNG_NOISE 0.25
+# Stock gate widths. K_GATE feeds only the kinematic-consistency check behind terrain and
+# dist_bottom fusion; at 0.30 a floor step kept failing it and terrain tracking dropped out.
+# A_IGATE and A_HMAX are read only under conditional range aiding, so both are inert at RNG_CTRL 2.
+param set-default EKF2_RNG_K_GATE 1.0
+param set-default EKF2_RNG_A_IGATE 1.0
 param set-default EKF2_RNG_A_HMAX 10.0
 
 # IMU
@@ -75,8 +83,10 @@ param set-default EKF2_OF_CTRL 1
 param set-default EKF2_OF_POS_X 0.0
 param set-default EKF2_OF_POS_Y 0.0115
 param set-default EKF2_OF_POS_Z 0.008518
-param set-default EKF2_OF_QMIN 100
-param set-default EKF2_OF_QMIN_GND 100
+# The PAA3905 tops out near 112, so a threshold of 100 disqualifies flow almost always and leaves
+# external vision as the only horizontal aiding source.
+param set-default EKF2_OF_QMIN 60
+param set-default EKF2_OF_QMIN_GND 40
 
 # RNG
 param set-default EKF2_RNG_POS_X -0.001322
@@ -117,8 +127,8 @@ param set-default MIS_TAKEOFF_ALT 1.5
 # Altitude following. The firmware default (2, terrain hold) holds height above ground
 # while stationary, so a hands-off hover climbs when an AMR passes underneath.
 param set-default MPC_ALT_MODE 0
-param set-default MPC_LAND_ALT3 1.5
-param set-default MPC_LAND_CRWL 0.75
+param set-default MPC_LAND_ALT3 1.0
+param set-default MPC_LAND_CRWL 0.3
 param set-default MPC_LAND_RC_HELP 1
 param set-default MPC_LAND_SPEED 0.7
 param set-default MPC_THR_HOVER 0.45
@@ -138,5 +148,6 @@ param set-default BAT1_N_CELLS 6
 param set-default BAT1_R_INTERNAL 0.0035
 param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
-param set-default BAT1_V_EMPTY 2.7
+# Li-ion cells (NOT LiPo): 2.8 V/cell under load is a legitimate empty point for this chemistry.
+param set-default BAT1_V_EMPTY 2.8
 param set-default BAT1_V_LOAD_DROP 0.42
