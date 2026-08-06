@@ -88,6 +88,9 @@ param set-default EKF2_OF_QMIN_GND 40
 # EV is the height reference (EKF2_HGT_REF 3) only while EV height fusion runs. On an EV
 # dropout range becomes the reference by fallback, and the datum then tracks the ground.
 param set-default EKF2_RNG_CTRL 2
+# De-weights range against EV on the height state (25:1): an AMR deck step pulls centimetres
+# instead of decimetres, while the sensor keeps fusing and stays promotable on EV loss.
+param set-default EKF2_RNG_NOISE 0.5
 param set-default EKF2_RNG_POS_X -0.001622
 param set-default EKF2_RNG_POS_Y -0.01792
 param set-default EKF2_RNG_POS_Z 0.010135
@@ -127,6 +130,8 @@ param set-default MIS_TAKEOFF_ALT 1.0
 # while stationary, so a hands-off hover climbs when an AMR passes underneath.
 param set-default MPC_ALT_MODE 0
 param set-default MPC_LAND_ALT3 0.4
+# DELIBERATE, above MPC_LAND_SPEED: the crawl is ASSIGNED below MPC_LAND_ALT3, and the fast
+# final descent punches through ground effect - slower rates left the vehicle floating high.
 param set-default MPC_LAND_CRWL 3.0
 param set-default MPC_LAND_RC_HELP 1
 param set-default MPC_LAND_SPEED 0.7
@@ -147,6 +152,8 @@ param set-default BAT1_N_CELLS 6
 param set-default BAT1_R_INTERNAL 0.0035
 param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
+# Li-ion cells (NOT LiPo): 2.8 V/cell under load is a legitimate empty point for this
+# chemistry.
 param set-default BAT1_V_EMPTY 2.8
 param set-default BAT1_V_LOAD_DROP 0.42
 param set-default BAT2_CAPACITY -1
