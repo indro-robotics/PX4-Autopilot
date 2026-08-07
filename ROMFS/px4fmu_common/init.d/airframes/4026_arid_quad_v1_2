@@ -83,10 +83,11 @@ param set-default EKF2_OF_CTRL 1
 param set-default EKF2_OF_POS_X 0.0
 param set-default EKF2_OF_POS_Y 0.0115
 param set-default EKF2_OF_POS_Z 0.008518
-# The PAA3905 tops out near 112, so a threshold of 100 disqualifies flow almost always and leaves
-# external vision as the only horizontal aiding source.
-param set-default EKF2_OF_QMIN 60
-param set-default EKF2_OF_QMIN_GND 40
+# The PAA3905 tops out near 112, so a high threshold disqualifies flow almost always and leaves
+# external vision as the only horizontal aiding source. The ground value is lower because a
+# stationary sensor over a shadowed pad scores worst.
+param set-default EKF2_OF_QMIN 50
+param set-default EKF2_OF_QMIN_GND 30
 
 # RNG
 param set-default EKF2_RNG_POS_X -0.001322
