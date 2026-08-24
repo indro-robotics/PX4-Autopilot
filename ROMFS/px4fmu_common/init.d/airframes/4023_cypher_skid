@@ -65,6 +65,8 @@ param set-default EKF2_EV_CTRL 11
 param set-default EKF2_EV_NOISE_MD 1
 param set-default EKF2_GPS_CTRL 0
 param set-default EKF2_HGT_REF 3
+# No magnetometer on this airframe: explicit NONE, never auto.
+param set-default EKF2_MAG_TYPE 5
 # Stock gate width. Tighter values fail range innovations over a terrain step for longer than
 # hgt_fusion_timeout_max, which latches cs_rng_fault; that flag clears only on the ground, so one
 # trip removes the rangefinder for the rest of the flight along with the EV-dropout fallback below.
