@@ -31,7 +31,7 @@ param set-default SER_TEL2_BAUD 3000000
 param set-default UXRCE_DDS_CFG 102
 param set-default UXRCE_DDS_DOM_ID 23
 param set-default UXRCE_DDS_PTCFG 1
-# No GPS and no RTC battery: without this the FMU boots at its last-saved time and every .ulg
+# No GPS: without this the FMU boots at its last-saved time and every .ulg
 # carries a date days off wall clock, which makes a log impossible to match to a software run.
 # The agent's UTC becomes the FMU clock once timesync converges. Read once at client start,
 # so it needs an FMU reboot to take effect.
