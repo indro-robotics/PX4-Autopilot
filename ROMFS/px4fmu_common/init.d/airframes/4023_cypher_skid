@@ -63,6 +63,12 @@ param set-default CAL_MAG0_PRIO 0
 param set-default EKF2_BARO_CTRL 0
 param set-default EKF2_EV_CTRL 11
 param set-default EKF2_EV_NOISE_MD 1
+# cuVSLAM is the only yaw reference on this airframe. 0.02 rad (1.1 deg one-sigma) fuses its yaw
+# about as tightly as EVP_NOISE 0.1 fuses its position; the fork's ev_yaw_control.cpp squares
+# the value as documented (stock 1.15 took it raw as a variance). HDG_GATE 5 matches EVP_GATE:
+# a rejected sample only leaves yaw on the gyro, the reactor's rotation gate handles garbage.
+param set-default EKF2_EVA_NOISE 0.02
+param set-default EKF2_HDG_GATE 5.0
 param set-default EKF2_GPS_CTRL 0
 param set-default EKF2_HGT_REF 3
 # No magnetometer on this airframe: explicit NONE, never auto.

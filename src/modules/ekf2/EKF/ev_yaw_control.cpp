@@ -46,7 +46,10 @@ void Ekf::controlEvYawFusion(const extVisionSample &ev_sample, const bool common
 	resetEstimatorAidStatus(aid_src);
 	aid_src.timestamp_sample = ev_sample.time_us;
 	aid_src.observation = getEulerYaw(ev_sample.quat);
-	aid_src.observation_variance = math::max(ev_sample.orientation_var(2), _params.ev_att_noise, sq(0.01f));
+	// EKF2_EVA_NOISE is a standard deviation in rad, as documented and as EKF2.cpp already squares it
+	// into orientation_var; the stock line took the raw value as a variance, which weakened EV yaw
+	// fusion tenfold at the default 0.1.
+	aid_src.observation_variance = math::max(ev_sample.orientation_var(2), sq(_params.ev_att_noise), sq(0.01f));
 	aid_src.innovation = wrap_pi(getEulerYaw(_R_to_earth) - aid_src.observation);
 
 	if (ev_reset) {
