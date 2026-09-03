@@ -57,8 +57,10 @@ bool GotoControl::checkForSetpoint(const hrt_abstime &now, const bool enabled)
 	return need_to_run;
 }
 
-void GotoControl::update(const float dt, const matrix::Vector3f &position, const float heading)
+bool GotoControl::update(const float dt, const matrix::Vector3f &position, const float heading)
 {
+	bool published = false;
+
 	if (!_is_initialized) {
 		resetPositionSmoother(position);
 		resetHeadingSmoother(heading);
@@ -72,13 +74,13 @@ void GotoControl::update(const float dt, const matrix::Vector3f &position, const
 	if (!position_setpoint.isAllFinite()) {
 		// TODO: error messaging
 		_need_smoother_reset = true;
-		return;
+		return false;
 	}
 
 	if (!position.isAllFinite()) {
 		// TODO: error messaging
 		_need_smoother_reset = true;
-		return;
+		return false;
 	}
 
 	if (_need_smoother_reset) {
@@ -123,6 +125,7 @@ void GotoControl::update(const float dt, const matrix::Vector3f &position, const
 
 	trajectory_setpoint.timestamp = goto_setpoint.timestamp;
 	_trajectory_setpoint_pub.publish(trajectory_setpoint);
+	published = true;
 
 	vehicle_constraints_s vehicle_constraints{
 		.timestamp = goto_setpoint.timestamp,
@@ -131,6 +134,8 @@ void GotoControl::update(const float dt, const matrix::Vector3f &position, const
 		.want_takeoff = false
 	};
 	_vehicle_constraints_pub.publish(vehicle_constraints);
+
+	return published;
 }
 
 void GotoControl::resetPositionSmoother(const matrix::Vector3f &position)
@@ -146,6 +151,39 @@ void GotoControl::resetPositionSmoother(const matrix::Vector3f &position)
 	_position_smoothing.reset(initial_acceleration, initial_velocity, position);
 
 	_need_smoother_reset = false;
+}
+
+bool GotoControl::shiftForEkfReset(const Vector3f &delta_position, const Vector3f &velocity_snap,
+				   const float delta_heading)
+{
+	if (!_is_initialized) {
+		return false;
+	}
+
+	// The smoother state is carried into the new frame; the goto destination is the caller's.
+	// A datum move (the companion rebases its target by the same delta) then costs no motion,
+	// where stock read the whole delta as a tracking error and flew it: a 1.16 m EV datum step
+	// put the vehicle on the floor in 0.4 s (2026-09-03). A correction the companion leaves in
+	// place is still flown, smoothly, to the absolute target it meant.
+	const Vector3f current = _position_smoothing.getCurrentPosition();
+	Vector3f shifted{NAN, NAN, NAN};
+
+	for (size_t i = 0; i < 3; i++) {
+		if (PX4_ISFINITE(delta_position(i)) && PX4_ISFINITE(current(i))) {
+			shifted(i) = current(i) + delta_position(i);
+		}
+	}
+
+	_position_smoothing.forceSetPosition(shifted);
+	// A velocity reset snaps the trajectory velocity onto the estimate, as FlightTaskAuto does.
+	_position_smoothing.forceSetVelocity(velocity_snap);
+
+	if (PX4_ISFINITE(delta_heading) && _controlling_heading) {
+		_heading_smoothing.reset(matrix::wrap_pi(_heading_smoothing.getSmoothedHeading() + delta_heading),
+					 _heading_smoothing.getSmoothedHeadingRate());
+	}
+
+	return true;
 }
 
 void GotoControl::resetHeadingSmoother(const float heading)

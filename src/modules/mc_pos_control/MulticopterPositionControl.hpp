@@ -240,5 +240,5 @@ private:
 	 * @param[out] setpoint trajectory setpoint struct to be adjusted
 	 */
 	void adjustSetpointForEKFResets(const vehicle_local_position_s &vehicle_local_position,
-					trajectory_setpoint_s &setpoint);
+					trajectory_setpoint_s &setpoint, const bool already_in_new_frame);
 };
