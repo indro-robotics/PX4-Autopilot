@@ -238,7 +238,8 @@ private:
 	 *
 	 * @param[in] vehicle_local_position struct containing EKF reset deltas and counters
 	 * @param[out] setpoint trajectory setpoint struct to be adjusted
+	 * @param[in] position_shifted true when the setpoint's position already carries this cycle's deltas
 	 */
 	void adjustSetpointForEKFResets(const vehicle_local_position_s &vehicle_local_position,
-					trajectory_setpoint_s &setpoint, const bool already_in_new_frame);
+					trajectory_setpoint_s &setpoint, const bool position_shifted);
 };

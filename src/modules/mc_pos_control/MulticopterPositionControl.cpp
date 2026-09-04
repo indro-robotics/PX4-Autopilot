@@ -382,15 +382,9 @@ void MulticopterPositionControl::Run()
 
 		PositionControlStates states{set_vehicle_states(vehicle_local_position)};
 
-		// An EKF reset moves the estimate, not the vehicle: the goto smoothers carry their
-		// setpoint with it, the same way FlightTaskAuto re-anchors its own. The counters are
-		// latched below in adjustSetpointForEKFResets. Whatever GotoControl publishes this
-		// cycle is already in the new frame, carried or freshly initialised from the post-reset
-		// state, and is not corrected again.
+		// Shift the goto smoother before it publishes; adjustSetpointForEKFResets latches the counters after.
 		{
 			Vector3f goto_delta{NAN, NAN, NAN};
-			Vector3f goto_vel_snap{NAN, NAN, NAN};
-			float goto_delta_heading{NAN};
 
 			if (vehicle_local_position.xy_reset_counter != _xy_reset_counter) {
 				goto_delta(0) = vehicle_local_position.delta_xy[0];
@@ -401,22 +395,8 @@ void MulticopterPositionControl::Run()
 				goto_delta(2) = vehicle_local_position.delta_z;
 			}
 
-			if (vehicle_local_position.vxy_reset_counter != _vxy_reset_counter) {
-				goto_vel_snap(0) = states.velocity(0);
-				goto_vel_snap(1) = states.velocity(1);
-			}
-
-			if (vehicle_local_position.vz_reset_counter != _vz_reset_counter) {
-				goto_vel_snap(2) = states.velocity(2);
-			}
-
-			if (vehicle_local_position.heading_reset_counter != _heading_reset_counter) {
-				goto_delta_heading = vehicle_local_position.delta_heading;
-			}
-
-			if (PX4_ISFINITE(goto_delta(0)) || PX4_ISFINITE(goto_delta(2)) || PX4_ISFINITE(goto_delta_heading)
-			    || PX4_ISFINITE(goto_vel_snap(0)) || PX4_ISFINITE(goto_vel_snap(2))) {
-				_goto_control.shiftForEkfReset(goto_delta, goto_vel_snap, goto_delta_heading);
+			if (PX4_ISFINITE(goto_delta(0)) || PX4_ISFINITE(goto_delta(2))) {
+				_goto_control.shiftForEkfReset(goto_delta);
 			}
 		}
 
@@ -651,13 +631,9 @@ trajectory_setpoint_s MulticopterPositionControl::generateFailsafeSetpoint(const
 }
 
 void MulticopterPositionControl::adjustSetpointForEKFResets(const vehicle_local_position_s &vehicle_local_position,
-		trajectory_setpoint_s &setpoint, const bool already_in_new_frame)
+		trajectory_setpoint_s &setpoint, const bool position_shifted)
 {
-	// A goto setpoint published this cycle already sits in the new frame, carried across the
-	// reset or initialised from the post-reset state; correcting it again would double every
-	// delta for one cycle.
-	if (!already_in_new_frame && (setpoint.timestamp != 0)
-	    && (setpoint.timestamp < vehicle_local_position.timestamp)) {
+	if ((setpoint.timestamp != 0) && (setpoint.timestamp < vehicle_local_position.timestamp)) {
 		if (vehicle_local_position.vxy_reset_counter != _vxy_reset_counter) {
 			setpoint.velocity[0] += vehicle_local_position.delta_vxy[0];
 			setpoint.velocity[1] += vehicle_local_position.delta_vxy[1];
@@ -667,13 +643,16 @@ void MulticopterPositionControl::adjustSetpointForEKFResets(const vehicle_local_
 			setpoint.velocity[2] += vehicle_local_position.delta_vz;
 		}
 
-		if (vehicle_local_position.xy_reset_counter != _xy_reset_counter) {
-			setpoint.position[0] += vehicle_local_position.delta_xy[0];
-			setpoint.position[1] += vehicle_local_position.delta_xy[1];
-		}
+		// A goto setpoint published this cycle already carries the position deltas.
+		if (!position_shifted) {
+			if (vehicle_local_position.xy_reset_counter != _xy_reset_counter) {
+				setpoint.position[0] += vehicle_local_position.delta_xy[0];
+				setpoint.position[1] += vehicle_local_position.delta_xy[1];
+			}
 
-		if (vehicle_local_position.z_reset_counter != _z_reset_counter) {
-			setpoint.position[2] += vehicle_local_position.delta_z;
+			if (vehicle_local_position.z_reset_counter != _z_reset_counter) {
+				setpoint.position[2] += vehicle_local_position.delta_z;
+			}
 		}
 
 		if (vehicle_local_position.heading_reset_counter != _heading_reset_counter) {

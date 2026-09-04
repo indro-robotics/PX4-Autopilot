@@ -38,8 +38,6 @@ publications:
   - topic: /fmu/out/vehicle_local_position
     type: px4_msgs::msg::VehicleLocalPosition
 
-  # The goto smoother's output, the reference the position controller tracks: on the
-  # bench it is the only view of how a setpoint rides an EKF reset.
   - topic: /fmu/out/trajectory_setpoint
     type: px4_msgs::msg::TrajectorySetpoint
 

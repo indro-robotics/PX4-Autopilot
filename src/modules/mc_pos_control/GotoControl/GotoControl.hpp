@@ -69,17 +69,12 @@ public:
 	void resetPositionSmoother(const matrix::Vector3f &position);
 
 	/**
-	 * @brief carries the smoothers across an EKF reset: the estimate moved, the vehicle did not,
-	 * so the tracked setpoint moves with the estimate. Position and heading shift by the delta, a
-	 * velocity reset snaps the trajectory velocity onto the estimate, acceleration is kept.
+	 * @brief shifts the position smoother by an EKF reset delta; velocity, acceleration and heading
+	 * are untouched and the goto destination stays the caller's.
 	 *
 	 * @param delta_position [m] (NED) reset delta per axis, NaN leaves that axis alone
-	 * @param velocity_snap [m/s] (NED) post-reset velocity estimate per axis for a velocity reset, NaN leaves it
-	 * @param delta_heading [rad] heading reset delta, NaN leaves the heading alone
-	 * @return true when the smoothers were live and carried
 	 */
-	bool shiftForEkfReset(const matrix::Vector3f &delta_position, const matrix::Vector3f &velocity_snap,
-			      const float delta_heading);
+	void shiftForEkfReset(const matrix::Vector3f &delta_position);
 
 	/**
 	 * @brief resets the heading smoother at the current heading with zero heading rate and acceleration.
@@ -95,8 +90,6 @@ public:
 	 * @param[in] dt [s] time since last control update
 	 * @param[in] position [m] (NED) local vehicle position
 	 * @param[in] heading [rad] (from North) vehicle heading
-	 * @param[in] goto_setpoint struct containing current go-to setpoints
-	 * @param[out] trajectory_setpoint struct containing trajectory (tracking) setpoints
 	 * @return true when a trajectory setpoint was published this cycle
 	 */
 	bool update(const float dt, const matrix::Vector3f &position, const float heading);
