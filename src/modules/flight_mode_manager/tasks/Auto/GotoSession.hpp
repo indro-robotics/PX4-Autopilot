@@ -66,19 +66,29 @@ public:
 	/**
 	 * @param governed the navigator target type accepts goto governance
 	 * @param has_xy the navigator target carries a horizontal position
+	 * @param navigator_stamp timestamp of the navigator's current setpoint, rewritten when it issues a new target
 	 * @return true on the cycle the stream went stale and the vehicle state became the target
 	 */
 	bool update(const uint64_t now, const Input &in, const bool governed, const bool has_xy,
-		    const matrix::Vector3f &position, const float yaw)
+		    const uint64_t navigator_stamp, const matrix::Vector3f &position, const float yaw)
 	{
 		if (!governed || has_xy) {
 			_state = State::none;
 			return false;
 		}
 
+		// A new navigator target ends the session; a fresh stream restarts it on the same cycle.
+		if ((_state != State::none) && (navigator_stamp != _navigator_stamp)) {
+			_state = State::none;
+		}
+
 		const bool stream_fresh = (in.timestamp != 0) && (now < in.timestamp + TIMEOUT_US) && in.position.isAllFinite();
 
 		if (stream_fresh) {
+			if (_state == State::none) {
+				_navigator_stamp = navigator_stamp;
+			}
+
 			_state = State::fresh;
 			_target = in.position;
 			_heading = (in.control_heading && std::isfinite(in.heading)) ? in.heading : NAN;
@@ -140,6 +150,7 @@ private:
 	enum class State { none, fresh, held };
 
 	State _state{State::none};
+	uint64_t _navigator_stamp{0};
 	matrix::Vector3f _target{};
 	float _heading{NAN};
 	float _max_horizontal_speed{NAN};

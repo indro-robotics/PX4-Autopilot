@@ -578,7 +578,8 @@ void FlightTaskAuto::_updateGotoSession(const WaypointType type, const bool has_
 				  || (type == WaypointType::land));
 	_goto_session_grounded = false;
 
-	if (_goto_session.update(_time_stamp_current, in, governed, has_xy, _position, _yaw)) {
+	if (_goto_session.update(_time_stamp_current, in, governed, has_xy, _sub_triplet_setpoint.get().current.timestamp,
+				 _position, _yaw)) {
 		// The stream fed the position controller directly; the task smoother resumes from the vehicle state.
 		_position_smoothing.forceSetPosition(_position);
 		_position_smoothing.forceSetVelocity(_velocity);
