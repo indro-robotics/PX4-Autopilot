@@ -37,3 +37,5 @@ px4_add_library(FlightTaskAuto
 
 target_link_libraries(FlightTaskAuto PUBLIC avoidance FlightTask FlightTaskUtility WeatherVane)
 target_include_directories(FlightTaskAuto PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+px4_add_unit_gtest(SRC GotoSessionTest.cpp)

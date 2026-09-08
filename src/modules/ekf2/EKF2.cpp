@@ -1848,8 +1848,8 @@ void EKF2::PublishStatus(const hrt_abstime &timestamp)
 
 void EKF2::PublishStatusFlags(const hrt_abstime &timestamp)
 {
-	// publish at ~ 1 Hz (or immediately if filter control status or fault status changes)
-	bool update = (timestamp >= _last_status_flags_publish + 1_s);
+	// publish at ~ 5 Hz (or immediately if filter control status or fault status changes)
+	bool update = (timestamp >= _last_status_flags_publish + 200_ms);
 
 	// filter control status
 	if (_ekf.control_status().value != _filter_control_status) {

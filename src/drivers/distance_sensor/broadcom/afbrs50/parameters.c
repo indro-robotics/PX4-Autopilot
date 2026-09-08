@@ -58,7 +58,7 @@ PARAM_DEFINE_INT32(SENS_AFBR_MODE, 0);
  * @group Sensors
  *
  */
-PARAM_DEFINE_INT32(SENS_AFBR_S_RATE, 50);
+PARAM_DEFINE_INT32(SENS_AFBR_S_RATE, 25);
 
 /**
  * AFBR Rangefinder Long Range Rate
@@ -70,7 +70,7 @@ PARAM_DEFINE_INT32(SENS_AFBR_S_RATE, 50);
  * @group Sensors
  *
  */
-PARAM_DEFINE_INT32(SENS_AFBR_L_RATE, 25);
+PARAM_DEFINE_INT32(SENS_AFBR_L_RATE, 15);
 
 /**
  * AFBR Rangefinder Short/Long Range Threshold
