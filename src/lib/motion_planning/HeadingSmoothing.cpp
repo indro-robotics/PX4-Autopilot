@@ -35,7 +35,10 @@
 
 HeadingSmoothing::HeadingSmoothing()
 {
-	_velocity_smoothing.setMaxVel(M_PI_F); // smoothed "velocity" is heading [-pi, pi]
+	// The bound is the unwrapped setpoint, not the heading: update() adds a wrapped delta to the
+	// current heading, so a turn whose short path crosses +/-pi asks for more than pi. At M_PI_F
+	// the constrain in updateDurations ate that overshoot and the turn parked on the seam.
+	_velocity_smoothing.setMaxVel(M_TWOPI_F); // smoothed "velocity" is heading [-pi, pi]
 }
 
 void HeadingSmoothing::reset(const float heading, const float heading_rate)
