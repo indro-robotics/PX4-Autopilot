@@ -121,8 +121,9 @@ if [[ $INSTALL_PYTHON_DEPS == "true" ]]; then
 		python -m pip install -r ${DIR}/requirements.txt
 
 	else
-		# older versions of Ubuntu require --user option
-		python3 -m pip install --user -r ${DIR}/requirements.txt
+		# System-wide, not --user: the user site precedes it on sys.path, so a --user copy
+		# shadows the system one and a shell and a service load different versions.
+		sudo -H python3 -m pip install -r ${DIR}/requirements.txt
 	fi
 else
 	echo "Skipping PX4 Python3 dependencies (--no-python-deps)"
@@ -141,7 +142,7 @@ fi
 git checkout "${SYM_TAG}"
 
 python3 -m build --wheel gen/python
-python3 -m pip install --user gen/python/dist/symforce_sym-*.whl
+sudo -H python3 -m pip install gen/python/dist/symforce_sym-*.whl
 
 # EXPORT_LINE='export PYTHONPATH="$HOME/symforce:$PYTHONPATH"'
 # if ! grep -Fxq "${EXPORT_LINE}" "$HOME/.bashrc"; then
