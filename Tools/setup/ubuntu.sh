@@ -9,6 +9,7 @@ set -e
 ## - Common dependencies and tools for nuttx, jMAVSim, Gazebo
 ## - NuttX toolchain (omit with arg: --no-nuttx)
 ## - jMAVSim and Gazebo9 simulator (omit with arg: --no-sim-tools)
+## - Python dependencies from requirements.txt (omit with arg: --no-python-deps)
 ##
 
 SYM_DIR="$HOME/symforce"
@@ -18,6 +19,7 @@ SYM_TAG="v0.10.1"
 
 INSTALL_NUTTX="true"
 INSTALL_SIM="true"
+INSTALL_PYTHON_DEPS="true"
 INSTALL_ARCH=`uname -m`
 
 # Parse arguments
@@ -29,6 +31,10 @@ do
 
 	if [[ $arg == "--no-sim-tools" ]]; then
 		INSTALL_SIM="false"
+	fi
+
+	if [[ $arg == "--no-python-deps" ]]; then
+		INSTALL_PYTHON_DEPS="false"
 	fi
 done
 
@@ -108,14 +114,18 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -y --quiet --no-install-recommends i
 
 
 # Python3 dependencies
-echo "Installing PX4 Python3 dependencies"
-if [ -n "$VIRTUAL_ENV" ]; then
-	# virtual environments don't allow --user option
-	python -m pip install -r ${DIR}/requirements.txt
+if [[ $INSTALL_PYTHON_DEPS == "true" ]]; then
+	echo "Installing PX4 Python3 dependencies"
+	if [ -n "$VIRTUAL_ENV" ]; then
+		# virtual environments don't allow --user option
+		python -m pip install -r ${DIR}/requirements.txt
 
+	else
+		# older versions of Ubuntu require --user option
+		python3 -m pip install --user -r ${DIR}/requirements.txt
+	fi
 else
-	# older versions of Ubuntu require --user option
-	python3 -m pip install --user -r ${DIR}/requirements.txt
+	echo "Skipping PX4 Python3 dependencies (--no-python-deps)"
 fi
 
 # Start handling symforce directly...
