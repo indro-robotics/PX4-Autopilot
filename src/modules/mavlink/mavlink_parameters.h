@@ -130,6 +130,8 @@ protected:
 
 	_uavcan_open_request_list_item *_uavcan_open_request_list{nullptr}; ///< Pointer to the first item in the linked list
 	bool _uavcan_waiting_for_request_response{false}; ///< We have reqested a parameter and wait for the response
+	hrt_abstime _uavcan_request_sent{0};
+	uint8_t _uavcan_request_retries{0};		///< Consecutive timeouts on the head of the list
 	uint16_t _uavcan_queued_request_items{0};	///< Number of stored parameter requests currently in the list
 
 	uORB::Publication<uavcan_parameter_request_s> _uavcan_parameter_request_pub{ORB_ID(uavcan_parameter_request)};

@@ -317,6 +317,23 @@ MavlinkParametersManager::send()
 		_first_send = true;
 	}
 
+#if defined(CONFIG_MAVLINK_UAVCAN_PARAMETERS)
+
+	// nothing clears the wait flag when a node stops responding, so the queued reads are never sent
+	if (_uavcan_waiting_for_request_response && (hrt_elapsed_time(&_uavcan_request_sent) > 1_s)) {
+		_uavcan_waiting_for_request_response = false;
+		_uavcan_request_retries++;
+
+		if (_uavcan_request_retries > 3) {
+			dequeue_uavcan_request();
+			_uavcan_request_retries = 0;
+		}
+
+		request_next_uavcan_parameter();
+	}
+
+#endif // CONFIG_MAVLINK_UAVCAN_PARAMETERS
+
 	int max_num_to_send;
 
 	if (_mavlink->get_protocol() == Protocol::SERIAL && !_mavlink->is_usb_uart()) {
@@ -614,6 +631,7 @@ void MavlinkParametersManager::request_next_uavcan_parameter()
 		_uavcan_parameter_request_pub.publish(req);
 
 		_uavcan_waiting_for_request_response = true;
+		_uavcan_request_sent = hrt_absolute_time();
 	}
 }
 
@@ -655,6 +673,7 @@ void MavlinkParametersManager::dequeue_uavcan_request()
 		--_uavcan_queued_request_items;
 		delete first;
 		_uavcan_waiting_for_request_response = false;
+		_uavcan_request_retries = 0;
 	}
 }
 

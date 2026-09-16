@@ -331,7 +331,7 @@ private:
 	uint8_t _count_index{0};
 
 	bool _param_in_progress{false};
-	uint8_t _param_index{0};
+	int16_t _param_index{0};
 	bool _param_list_in_progress{false};
 	bool _param_list_all_nodes{false};
 	uint8_t _param_list_node_id{1};

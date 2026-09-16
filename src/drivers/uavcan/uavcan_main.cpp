@@ -925,7 +925,8 @@ UavcanNode::Run()
 		// Ready to request the next value -- _param_index is incremented
 		// after each successful fetch by cb_getset
 		uavcan::protocol::param::GetSet::Request req;
-		req.index = _param_index;
+		// A request by name leaves the index at -1 and the GetSet index field is unsigned.
+		req.index = (_param_index < 0) ? 0 : _param_index;
 
 		int call_res = _param_getset_client.call(_param_list_node_id, req);
 
