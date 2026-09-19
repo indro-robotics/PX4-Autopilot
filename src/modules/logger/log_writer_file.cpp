@@ -429,13 +429,14 @@ void LogWriterFile::run()
 
 #endif
 
-					int written = buffer.write_to_file(read_ptr, available, call_fsync);
+					int write_errno = 0;
+					int written = buffer.write_to_file(read_ptr, available, call_fsync, write_errno);
 
 					if (written < 0) {
 						// retry once
-						PX4_ERR("write failed errno:%i (%s), retrying", errno, strerror(errno));
+						PX4_ERR("write failed errno:%i (%s), retrying", write_errno, strerror(write_errno));
 						px4_usleep(10000); // 10 milliseconds
-						written = buffer.write_to_file(read_ptr, available, call_fsync);
+						written = buffer.write_to_file(read_ptr, available, call_fsync, write_errno);
 					}
 
 					/* buffer.mark_read() requires _mtx to be locked */
@@ -454,7 +455,7 @@ void LogWriterFile::run()
 						}
 
 					} else {
-						PX4_ERR("write failed (%i)", errno);
+						buffer._write_error_errno.store(write_errno);
 						buffer._had_write_error.store(true);
 						buffer._should_run = false;
 						pthread_mutex_unlock(&_mtx);
@@ -652,7 +653,6 @@ size_t LogWriterFile::LogFileBuffer::get_read_ptr(void **ptr, bool *is_part)
 bool LogWriterFile::LogFileBuffer::start_log(const char *filename)
 {
 	_fd = ::open(filename, O_CREAT | O_WRONLY, PX4_O_MODE_666);
-	_had_write_error.store(false);
 
 	if (_fd < 0) {
 		PX4_ERR("Can't open log file %s, errno: %d", filename, errno);
@@ -675,6 +675,9 @@ bool LogWriterFile::LogFileBuffer::start_log(const char *filename)
 	_count = 0;
 	_total_written = 0;
 
+	// A failed open leaves the flag set: it is the only condition the reopen path tests.
+	_had_write_error.store(false);
+
 	_should_run = true;
 
 	return true;
@@ -687,10 +690,13 @@ void LogWriterFile::LogFileBuffer::fsync() const
 	perf_end(_perf_fsync);
 }
 
-ssize_t LogWriterFile::LogFileBuffer::write_to_file(const void *buffer, size_t size, bool call_fsync) const
+ssize_t LogWriterFile::LogFileBuffer::write_to_file(const void *buffer, size_t size, bool call_fsync,
+		int &write_errno) const
 {
 	perf_begin(_perf_write);
 	ssize_t ret = ::write(_fd, buffer, size);
+	// fsync runs after a failed write and sets errno itself, so the write's value is taken here.
+	write_errno = (ret < 0) ? errno : 0;
 	perf_end(_perf_write);
 
 	if (call_fsync) {
