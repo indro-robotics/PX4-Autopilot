@@ -50,6 +50,9 @@ publications:
   - topic: /fmu/out/logger_status
     type: px4_msgs::msg::LoggerStatus
 
+  - topic: /fmu/out/mission_result
+    type: px4_msgs::msg::MissionResult
+
   - topic: /fmu/out/distance_sensor
     type: px4_msgs::msg::DistanceSensor
 
