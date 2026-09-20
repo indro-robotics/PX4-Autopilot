@@ -136,6 +136,8 @@ public:
 
 	int write_error_errno() const { return _buffers[(int)LogType::Full]._write_error_errno.load(); }
 
+	int open_error_errno(LogType type) const { return _buffers[(int)type]._open_error_errno; }
+
 	pthread_t thread_id() const { return _thread; }
 
 #if defined(PX4_CRYPTO)
@@ -205,6 +207,7 @@ private:
 		bool _should_run = false;
 		px4::atomic_bool _had_write_error{false};
 		px4::atomic_int _write_error_errno{0};
+		int _open_error_errno{0};
 	private:
 		const size_t _buffer_size;
 		int	_fd = -1;

@@ -654,6 +654,7 @@ size_t LogWriterFile::LogFileBuffer::get_read_ptr(void **ptr, bool *is_part)
 bool LogWriterFile::LogFileBuffer::start_log(const char *filename)
 {
 	_fd = ::open(filename, O_CREAT | O_WRONLY, PX4_O_MODE_666);
+	_open_error_errno = (_fd < 0) ? errno : 0;
 	_had_write_error.store(false);
 
 	if (_fd < 0) {

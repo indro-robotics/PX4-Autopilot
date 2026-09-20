@@ -73,6 +73,8 @@ public:
 
 	int file_write_error_errno() const;
 
+	int file_open_error_errno(LogType type) const;
+
 	void start_log_mavlink();
 
 	void stop_log_mavlink();

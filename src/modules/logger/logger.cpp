@@ -1447,6 +1447,11 @@ void Logger::start_log_file(LogType type)
 		}
 
 		_statistics[(int) type].start_time_file = hrt_absolute_time();
+
+	} else {
+		// A log that never opens leaves no file the errno could be read back from.
+		mavlink_log_critical(&_mavlink_log_pub, "log open failed errno %i, no log",
+				     _writer.file_open_error_errno(type));
 	}
 
 }
