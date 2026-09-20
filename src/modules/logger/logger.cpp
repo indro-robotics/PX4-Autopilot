@@ -1443,7 +1443,6 @@ void Logger::start_log_file(LogType type)
 		if (type == LogType::Full) {
 			/* reset performance counters to get in-flight min and max values in post flight log */
 			perf_reset_all();
-			_file_write_error_reported = false;
 		}
 
 		_statistics[(int) type].start_time_file = hrt_absolute_time();
@@ -1526,26 +1525,15 @@ struct perf_callback_data_t {
 
 void Logger::handle_file_write_error()
 {
-	if (!_writer.had_file_write_error() || _writer.is_started(LogType::Full, LogWriter::BackendFile)
-	    || !_prev_file_log_start_state) {
-		return;
+	// Check for write errors, but do not immediately retry
+	if (_writer.had_file_write_error() && !_writer.is_started(LogType::Full, LogWriter::BackendFile)
+	    && _prev_file_log_start_state) {
+		if (_statistics[(int)LogType::Full].start_time_file != 0
+		    && hrt_absolute_time() > _statistics[(int)LogType::Full].start_time_file + 10_s) {
+			PX4_DEBUG("Restarting due to write failure");
+			start_log_file(LogType::Full);
+		}
 	}
-
-	if (!_file_write_error_reported) {
-		_file_write_error_reported = true;
-		PX4_ERR("log write failed errno %i", _writer.file_write_error_errno());
-	}
-
-	const hrt_abstime now = hrt_absolute_time();
-
-	if (now < _next_file_log_reopen) {
-		return;
-	}
-
-	// Without the interval a card failing every write takes one new log file per logger iteration.
-	_next_file_log_reopen = now + FILE_LOG_REOPEN_INTERVAL;
-
-	start_log_file(LogType::Full);
 }
 
 void Logger::perf_iterate_callback(perf_counter_t handle, void *user)

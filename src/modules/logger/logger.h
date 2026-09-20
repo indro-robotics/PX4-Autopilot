@@ -64,8 +64,6 @@ using namespace time_literals;
 static constexpr hrt_abstime TRY_SUBSCRIBE_INTERVAL{20_ms};	// interval in microseconds at which we try to subscribe to a topic
 // if we haven't succeeded before
 
-static constexpr hrt_abstime FILE_LOG_REOPEN_INTERVAL{10_s};	// shortest interval between two log file reopens after a write failure
-
 namespace px4
 {
 namespace logger
@@ -347,8 +345,6 @@ private:
 
 	bool						_prev_file_log_start_state{false}; ///< previous state depending on logging mode (arming or aux1 state)
 	bool						_manually_logging_override{false};
-	bool						_file_write_error_reported{false}; ///< write failure errno printed for the current file log
-	hrt_abstime					_next_file_log_reopen{0}; ///< earliest time a log file reopen after a write failure may run
 
 	Statistics					_statistics[(int)LogType::Count];
 	hrt_abstime					_last_sync_time{0}; ///< last time a sync msg was sent

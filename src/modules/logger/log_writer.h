@@ -71,8 +71,6 @@ public:
 
 	bool had_file_write_error() const;
 
-	int file_write_error_errno() const;
-
 	void start_log_mavlink();
 
 	void stop_log_mavlink();
