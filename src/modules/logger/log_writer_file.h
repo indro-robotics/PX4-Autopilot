@@ -134,6 +134,8 @@ public:
 
 	bool had_write_error() const { return _buffers[(int)LogType::Full]._had_write_error.load(); }
 
+	int write_error_errno() const { return _buffers[(int)LogType::Full]._write_error_errno.load(); }
+
 	pthread_t thread_id() const { return _thread; }
 
 #if defined(PX4_CRYPTO)
@@ -190,7 +192,7 @@ private:
 
 		int fd() const { return _fd; }
 
-		inline ssize_t write_to_file(const void *buffer, size_t size, bool call_fsync) const;
+		inline ssize_t write_to_file(const void *buffer, size_t size, bool call_fsync, int &write_errno) const;
 
 		inline void fsync() const;
 
@@ -202,6 +204,7 @@ private:
 
 		bool _should_run = false;
 		px4::atomic_bool _had_write_error{false};
+		px4::atomic_int _write_error_errno{0};
 	private:
 		const size_t _buffer_size;
 		int	_fd = -1;
