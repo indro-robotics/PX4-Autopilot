@@ -28,6 +28,7 @@ param set-default MOT_POLE_COUNT 12
 
 # COMMS
 param set-default SER_TEL2_BAUD 3000000
+param set-default MAV_2_CONFIG 0
 param set-default UXRCE_DDS_CFG 102
 param set-default UXRCE_DDS_DOM_ID 23
 param set-default UXRCE_DDS_PTCFG 1
@@ -44,6 +45,7 @@ param set-default SYS_HAS_MAG 0
 param set-default SENS_BOARD_ROT 14
 
 # UAVCAN
+param set-default UAVCAN_ENABLE 2
 param set-default UAVCAN_SUB_FLOW 1
 param set-default UAVCAN_SUB_IMU 1
 param set-default UAVCAN_SUB_MAG 0
@@ -113,6 +115,8 @@ param set-default COM_FLTMODE1 2
 param set-default COM_FLTMODE4 2
 param set-default COM_FLTMODE6 2
 param set-default COM_DISARM_LAND 1.0
+param set-default COM_FLTT_LOW_ACT 1
+param set-default COM_HOME_EN 0
 param set-default COM_LOW_BAT_ACT 2
 param set-default COM_OBL_RC_ACT 4
 param set-default COM_OF_LOSS_T 5.0
@@ -121,8 +125,12 @@ param set-default COM_RC_IN_MODE 0
 param set-default COM_RC_LOSS_T 2.0
 param set-default COM_RC_OVERRIDE 3
 param set-default COM_RC_STICK_OV 20.0
+param set-default COM_QC_ACT 1
+param set-default GF_ACTION 5
 param set-default MAN_ARM_GESTURE 0
 param set-default NAV_RCL_ACT 3
+param set-default RTL_DESCEND_ALT 3.0
+param set-default RTL_RETURN_ALT 3.0
 
 # RC
 param set-default RC_CHAN_CNT 16
@@ -150,7 +158,7 @@ param set-default MPC_LAND_ALT3 0.4
 param set-default MPC_LAND_CRWL 3.0
 param set-default MPC_LAND_RC_HELP 1
 param set-default MPC_LAND_SPEED 0.7
-param set-default MPC_THR_HOVER 0.45
+param set-default MPC_THR_HOVER 0.35
 param set-default MPC_TKO_RAMP_T 0.5
 param set-default MPC_TKO_SPEED 1.5
 
@@ -162,22 +170,22 @@ param set-default PWM_AUX_FUNC4 104
 param set-default PWM_AUX_TIM0 -3
 
 # POWER
-param set-default BAT1_CAPACITY 10000
+param set-default BAT1_CAPACITY -1
 param set-default BAT1_N_CELLS 6
-param set-default BAT1_R_INTERNAL 0.0035
+param set-default BAT1_R_INTERNAL 0.007
 param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
 # Li-ion cells (NOT LiPo): 2.8 V/cell under load is a legitimate empty point for this
 # chemistry.
 param set-default BAT1_V_EMPTY 2.8
-param set-default BAT1_V_LOAD_DROP 0.42
+param set-default BAT1_V_LOAD_DROP 0.48
 param set-default BAT2_CAPACITY -1
-param set-default BAT2_N_CELLS 6
-param set-default BAT2_R_INTERNAL 0.0035
+param set-default BAT2_N_CELLS 1
+param set-default BAT2_R_INTERNAL 0.007
 param set-default BAT2_SOURCE 0
-param set-default BAT2_V_CHARGED 4.2
-param set-default BAT2_V_EMPTY 2.8
-param set-default BAT2_V_LOAD_DROP 0.42
+param set-default BAT2_V_CHARGED 25.2
+param set-default BAT2_V_EMPTY 16.8
+param set-default BAT2_V_LOAD_DROP 0.48
 
 # POWER MODULE
 param set-default SENS_EN_INA226 0
