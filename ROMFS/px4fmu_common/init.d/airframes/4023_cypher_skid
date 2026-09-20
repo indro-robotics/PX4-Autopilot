@@ -183,3 +183,7 @@ param set-default BAT2_V_LOAD_DROP 0.42
 param set-default SENS_EN_INA226 0
 param set-default SENS_EN_INA238 1
 param set-default INA238_SHUNT 0.0001
+
+# LOGGING
+# 30 dated directories is 30 flying days, and this 62 GB card holds that at up to 2 GB a day.
+param set-default SDLOG_DIRS_MAX 30
