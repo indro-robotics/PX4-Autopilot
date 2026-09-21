@@ -115,6 +115,8 @@ param set-default COM_FLTMODE1 2
 param set-default COM_FLTMODE4 2
 param set-default COM_FLTMODE6 2
 param set-default COM_DISARM_LAND 1.0
+# No SD card, no ULog: arming refuses until the card is mounted.
+param set-default COM_ARM_SDCARD 2
 param set-default COM_FLTT_LOW_ACT 1
 param set-default COM_HOME_EN 0
 param set-default COM_LOW_BAT_ACT 2
