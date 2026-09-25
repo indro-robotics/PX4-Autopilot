@@ -66,6 +66,25 @@ void Ekf::runTerrainEstimator(const imuSample &imu_delayed)
 	if (!_control_status.flags.in_air) {
 		_last_on_ground_posD = _state.pos(2);
 		_control_status.flags.rng_fault = false;
+#if defined(CONFIG_EKF2_RANGE_FINDER)
+		_range_sensor.setFaulty(false);
+		_rng_fault_retries = 0;
+#endif // CONFIG_EKF2_RANGE_FINDER
+
+#if defined(CONFIG_EKF2_RANGE_FINDER)
+
+	} else if (_control_status.flags.rng_fault
+		   && (_rng_fault_retries < _params.rng_fault_retries)
+		   && isTimedOut(_time_rng_fault_us, static_cast<uint64_t>(_params.terrain_timeout * 1e6f))
+		   && _range_sensor.isDataReady()
+		   && (_time_rng_clean_start_us != 0)
+		   && isTimedOut(_time_rng_clean_start_us, static_cast<uint64_t>(_params.range_valid_quality_s * 1e6f))) {
+		// Fusion restarts by resetting onto the next valid sample, so the clean run is the only proof the fault has cleared.
+		_rng_fault_retries++;
+		_control_status.flags.rng_fault = false;
+		_range_sensor.setFaulty(false);
+		ECL_INFO("rng fusion retry %d of %d", (int)_rng_fault_retries, (int)_params.rng_fault_retries);
+#endif // CONFIG_EKF2_RANGE_FINDER
 
 	} else if (!_control_status_prev.flags.in_air) {
 		// Let the estimator run freely before arming for bench testing purposes, but reset on takeoff
@@ -148,8 +167,7 @@ void Ekf::controlHaglRngFusion()
 					} else if (starting_conditions_passing) {
 						// The sensor can probably not detect the ground properly
 						// declare the sensor faulty and stop the fusion
-						_control_status.flags.rng_fault = true;
-						_range_sensor.setFaulty(true);
+						declareRngFault();
 						stopHaglRngFusion();
 
 					} else {

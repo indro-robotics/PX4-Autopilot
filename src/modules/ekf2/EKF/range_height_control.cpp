@@ -56,22 +56,17 @@ void Ekf::controlRangeHeightFusion()
 
 		_range_sensor.runChecks(_time_delayed_us, _R_to_earth);
 
+		// correct the range data for position offset relative to the IMU
+		const Vector3f pos_offset_body = _params.rng_pos_body - _params.imu_pos_body;
+		const Vector3f pos_offset_earth = _R_to_earth * pos_offset_body;
+
+		// A faulty sensor's samples skip the validity checks, so the in-air retry rests on their consistency alone.
+		const bool is_fault_sample = _control_status.flags.in_air
+					     && _control_status.flags.rng_fault
+					     && _range_sensor.isDataReady();
+
 		if (_range_sensor.isDataHealthy()) {
-			// correct the range data for position offset relative to the IMU
-			const Vector3f pos_offset_body = _params.rng_pos_body - _params.imu_pos_body;
-			const Vector3f pos_offset_earth = _R_to_earth * pos_offset_body;
 			_range_sensor.setRange(_range_sensor.getRange() + pos_offset_earth(2) / _range_sensor.getCosTilt());
-
-			if (_control_status.flags.in_air) {
-				const bool horizontal_motion = _control_status.flags.fixed_wing
-								|| (sq(_state.vel(0)) + sq(_state.vel(1)) > fmaxf(P.trace<2>(State::vel.idx), 0.1f));
-
-				const float dist_dependant_var = sq(_params.range_noise_scaler * _range_sensor.getDistBottom());
-				const float var = sq(_params.range_noise) + dist_dependant_var;
-
-				_rng_consistency_check.setGate(_params.range_kin_consistency_gate);
-				_rng_consistency_check.update(_range_sensor.getDistBottom(), math::max(var, 0.001f), _state.vel(2), P(State::vel.idx + 2, State::vel.idx + 2), horizontal_motion, _time_delayed_us);
-			}
 
 		} else {
 			// If we are supposed to be using range finder data as the primary height sensor, have bad range measurements
@@ -82,6 +77,35 @@ void Ekf::controlRangeHeightFusion()
 
 				_range_sensor.setRange(_params.rng_gnd_clearance);
 				_range_sensor.setValidity(true); // bypass the checks
+			}
+		}
+
+		if (_control_status.flags.in_air && (_range_sensor.isDataHealthy() || is_fault_sample)) {
+			// A faulty sample skips the tilt check, so its offset goes on the vertical distance, not through the cos tilt division.
+			const float dist_bottom = _range_sensor.isDataHealthy() ? _range_sensor.getDistBottom()
+						  : _range_sensor.getDistBottom() + pos_offset_earth(2);
+
+			const bool horizontal_motion = _control_status.flags.fixed_wing
+						       || (sq(_state.vel(0)) + sq(_state.vel(1)) > fmaxf(P.trace<2>(State::vel.idx), 0.1f));
+
+			const float dist_dependant_var = sq(_params.range_noise_scaler * dist_bottom);
+			const float var = sq(_params.range_noise) + dist_dependant_var;
+
+			_rng_consistency_check.setGate(_params.range_kin_consistency_gate);
+			const bool is_consistency_updated = _rng_consistency_check.update(dist_bottom, math::max(var, 0.001f), _state.vel(2), P(State::vel.idx + 2, State::vel.idx + 2), horizontal_motion, _time_delayed_us);
+
+			if (is_fault_sample) {
+				const bool is_clean = is_consistency_updated
+						      && (_rng_consistency_check.getTestRatio() < 1.f)
+						      && (dist_bottom > 2.f * _params.rng_gnd_clearance)
+						      && (_range_sensor.getSampleAddress()->quality != 0);
+
+				if (!is_clean) {
+					_time_rng_clean_start_us = 0;
+
+				} else if (_time_rng_clean_start_us == 0) {
+					_time_rng_clean_start_us = _time_delayed_us;
+				}
 			}
 		}
 
@@ -128,7 +152,8 @@ void Ekf::controlRangeHeightFusion()
 
 		const bool starting_conditions_passing = continuing_conditions_passing
 				&& isNewestSampleRecent(_time_last_range_buffer_push, 2 * RNG_MAX_INTERVAL)
-				&& _range_sensor.isRegularlySendingData();
+				&& _range_sensor.isRegularlySendingData()
+				&& (!_control_status.flags.in_air || (_rng_consistency_check.getTestRatio() < 1.f));
 
 		if (_control_status.flags.rng_hgt) {
 			if (continuing_conditions_passing) {
@@ -137,7 +162,7 @@ void Ekf::controlRangeHeightFusion()
 
 				const bool is_fusion_failing = isTimedOut(aid_src.time_last_fuse, _params.hgt_fusion_timeout_max);
 
-				if (isHeightResetRequired()) {
+				if (isHeightResetRequired() && (_height_sensor_ref == HeightSensor::RANGE)) {
 					// All height sources are failing
 					ECL_WARN("%s height fusion reset required, all height sources failing", HGT_SRC_NAME);
 
@@ -154,8 +179,7 @@ void Ekf::controlRangeHeightFusion()
 					// Some other height source is still working
 					ECL_WARN("stopping %s height fusion, fusion failing", HGT_SRC_NAME);
 					stopRngHgtFusion();
-					_control_status.flags.rng_fault = true;
-					_range_sensor.setFaulty();
+					declareRngFault();
 				}
 
 			} else {
@@ -239,6 +263,26 @@ bool Ekf::isConditionalRangeAidSuitable()
 #endif // CONFIG_EKF2_TERRAIN
 
 	return false;
+}
+
+void Ekf::declareRngFault()
+{
+	_control_status.flags.rng_fault = true;
+	_range_sensor.setFaulty(true);
+	_time_rng_fault_us = _time_delayed_us;
+	_time_rng_clean_start_us = 0;
+
+#if defined(CONFIG_EKF2_TERRAIN)
+
+	if (_rng_fault_retries < _params.rng_fault_retries) {
+		ECL_WARN("rng fault, retry %d of %d in %.0f s", (int)_rng_fault_retries + 1,
+			 (int)_params.rng_fault_retries, (double)_params.terrain_timeout);
+
+	} else {
+		ECL_WARN("rng fault latched to landing");
+	}
+
+#endif // CONFIG_EKF2_TERRAIN
 }
 
 void Ekf::stopRngHgtFusion()

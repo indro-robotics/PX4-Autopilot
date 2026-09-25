@@ -107,7 +107,15 @@ public:
 	float getValidMinVal() const { return _rng_valid_min_val; }
 	float getValidMaxVal() const { return _rng_valid_max_val; }
 
-	void setFaulty(bool faulty = true) { _is_faulty = faulty; }
+	void setFaulty(bool faulty = true)
+	{
+		if (_is_faulty && !faulty) {
+			// A fault mutes the sensor without an outage, so the stuck detector must not arm on the muted period.
+			_time_last_valid_us = _sample.time_us;
+		}
+
+		_is_faulty = faulty;
+	}
 
 private:
 	void updateSensorToEarthRotation(const matrix::Dcmf &R_to_earth);

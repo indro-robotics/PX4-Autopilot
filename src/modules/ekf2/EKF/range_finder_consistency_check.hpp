@@ -48,7 +48,7 @@ public:
 	RangeFinderConsistencyCheck() = default;
 	~RangeFinderConsistencyCheck() = default;
 
-	void update(float dist_bottom, float dist_bottom_var, float vz, float vz_var, bool horizontal_motion, uint64_t time_us);
+	bool update(float dist_bottom, float dist_bottom_var, float vz, float vz_var, bool horizontal_motion, uint64_t time_us);
 
 	void setGate(float gate) { _gate = gate; }
 

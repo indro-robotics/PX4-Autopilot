@@ -37,7 +37,7 @@
 
 #include "range_finder_consistency_check.hpp"
 
-void RangeFinderConsistencyCheck::update(float dist_bottom, float dist_bottom_var, float vz, float vz_var, bool horizontal_motion, uint64_t time_us)
+bool RangeFinderConsistencyCheck::update(float dist_bottom, float dist_bottom_var, float vz, float vz_var, bool horizontal_motion, uint64_t time_us)
 {
 	if (horizontal_motion) {
 		_time_last_horizontal_motion = time_us;
@@ -49,7 +49,7 @@ void RangeFinderConsistencyCheck::update(float dist_bottom, float dist_bottom_va
 	    || (dt < 0.001f) || (dt > 0.5f)) {
 		_time_last_update_us = time_us;
 		_dist_bottom_prev = dist_bottom;
-		return;
+		return false;
 	}
 
 	const float vel_bottom = (dist_bottom - _dist_bottom_prev) / dt;
@@ -68,6 +68,8 @@ void RangeFinderConsistencyCheck::update(float dist_bottom, float dist_bottom_va
 
 	_time_last_update_us = time_us;
 	_dist_bottom_prev = dist_bottom;
+
+	return true;
 }
 
 void RangeFinderConsistencyCheck::updateConsistency(float vz, uint64_t time_us)

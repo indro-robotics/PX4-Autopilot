@@ -608,6 +608,9 @@ private:
 #if defined(CONFIG_EKF2_RANGE_FINDER)
 	estimator_aid_source1d_s _aid_src_rng_hgt{};
 	HeightBiasEstimator _rng_hgt_b_est{HeightSensor::RANGE, _height_sensor_ref};
+	uint64_t _time_rng_fault_us{0};
+	uint64_t _time_rng_clean_start_us{0};	///< start of the faulty sensor's current consistent run, 0 when none (uSec)
+	int32_t _rng_fault_retries{0};		///< cleared on the ground
 #endif // CONFIG_EKF2_RANGE_FINDER
 
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)
@@ -871,6 +874,7 @@ private:
 	void controlRangeHeightFusion();
 	bool isConditionalRangeAidSuitable();
 	void stopRngHgtFusion();
+	void declareRngFault();
 #endif // CONFIG_EKF2_RANGE_FINDER
 
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)

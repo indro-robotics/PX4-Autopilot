@@ -997,6 +997,17 @@ parameters:
       unit: s
       min: 0.1
       max: 5
+    EKF2_RNG_FLT_N:
+      description:
+        short: Range finder fault re-attempts
+        long: After the range finder is declared faulty in the air, fusion is re-attempted
+          up to this many times, 10 s after each fault at the earliest, once the readings
+          have stayed kinematically consistent for EKF2_RNG_QLTY_T. Past the count the
+          fault holds until landing.
+      type: int32
+      default: 3
+      min: 0
+      max: 10
     EKF2_RNG_K_GATE:
       description:
         short: Gate size used for range finder kinematic consistency check
