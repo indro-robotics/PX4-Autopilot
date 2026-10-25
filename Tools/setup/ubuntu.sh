@@ -9,10 +9,12 @@ set -e
 ## - Common dependencies and tools for nuttx, jMAVSim, Gazebo
 ## - NuttX toolchain (omit with arg: --no-nuttx)
 ## - jMAVSim and Gazebo9 simulator (omit with arg: --no-sim-tools)
+## - Python dependencies from requirements.txt (omit with arg: --no-python-deps)
 ##
 
 INSTALL_NUTTX="true"
 INSTALL_SIM="true"
+INSTALL_PYTHON_DEPS="true"
 INSTALL_ARCH=`uname -m`
 
 # Parse arguments
@@ -24,6 +26,10 @@ do
 
 	if [[ $arg == "--no-sim-tools" ]]; then
 		INSTALL_SIM="false"
+	fi
+
+	if [[ $arg == "--no-python-deps" ]]; then
+		INSTALL_PYTHON_DEPS="false"
 	fi
 done
 
@@ -108,18 +114,23 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get -y --quiet --no-install-recommends i
 
 # Python3 dependencies
 echo
-echo "[ubuntu.sh] Installing PX4 Python3 dependencies"
-PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-REQUIRED_VERSION="3.11"
-if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" == "$REQUIRED_VERSION" ]]; then
-	python3 -m pip install --break-system-packages -r ${DIR}/requirements.txt
-else
-	if [ -n "$VIRTUAL_ENV" ]; then
-		# virtual environments don't allow --user option
-		python -m pip install -r ${DIR}/requirements.txt
+if [[ $INSTALL_PYTHON_DEPS == "true" ]]; then
+	echo "[ubuntu.sh] Installing PX4 Python3 dependencies"
+	PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
+	REQUIRED_VERSION="3.11"
+	if [[ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" == "$REQUIRED_VERSION" ]]; then
+		python3 -m pip install --break-system-packages -r ${DIR}/requirements.txt
 	else
-		python3 -m pip install --user -r ${DIR}/requirements.txt
+		if [ -n "$VIRTUAL_ENV" ]; then
+			# virtual environments don't allow --user option
+			python -m pip install -r ${DIR}/requirements.txt
+		else
+			# Not --user: a user-site copy shadows the system one, so a shell and a service load different versions.
+			sudo -H python3 -m pip install -r ${DIR}/requirements.txt
+		fi
 	fi
+else
+	echo "[ubuntu.sh] PX4 Python3 dependencies skipped: --no-python-deps"
 fi
 
 # NuttX toolchain (arm-none-eabi-gcc)
