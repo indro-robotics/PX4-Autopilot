@@ -357,6 +357,11 @@ bool FlightTaskAuto::_evaluateTriplets()
 	if (!triplet_valid) {
 		// Best we can do is to just set all waypoints to current state
 		_prev_prev_wp = _triplet_prev_wp = _triplet_target = _triplet_next_wp = _position;
+
+		if (_goto_session.governs()) {
+			_triplet_target = _triplet_next_wp = _goto_session.target();
+		}
+
 		_type = WaypointType::loiter;
 		_yaw_setpoint = _yaw;
 		_yawspeed_setpoint = NAN;
@@ -544,8 +549,9 @@ void FlightTaskAuto::_updateGotoSession(const bool triplet_valid, const bool has
 	const position_setpoint_s &current = _sub_triplet_setpoint.get().current;
 
 	// Mission and RTL loiter items carry no xy either, so the nav state confines the session to Hold.
-	const bool loiter = !_goto_session_grounded && triplet_valid
-			    && ((WaypointType)current.type == WaypointType::loiter)
+	// An invalid triplet counts as a loiter target, as in the stock fallback above.
+	const bool loiter = !_goto_session_grounded
+			    && (!triplet_valid || ((WaypointType)current.type == WaypointType::loiter))
 			    && (_sub_vehicle_status.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER);
 	_goto_session_grounded = false;
 
