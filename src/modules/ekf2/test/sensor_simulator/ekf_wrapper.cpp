@@ -60,6 +60,11 @@ void EkfWrapper::enableRangeHeightFusion()
 	_ekf_params->ekf2_rng_ctrl = static_cast<int32_t>(RngCtrl::ENABLED);
 }
 
+void EkfWrapper::enableConditionalRangeHeightFusion()
+{
+	_ekf_params->ekf2_rng_ctrl = static_cast<int32_t>(RngCtrl::CONDITIONAL);
+}
+
 void EkfWrapper::disableRangeHeightFusion()
 {
 	_ekf_params->ekf2_rng_ctrl = static_cast<int32_t>(RngCtrl::DISABLED);
