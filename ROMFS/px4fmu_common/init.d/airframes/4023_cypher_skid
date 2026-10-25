@@ -40,8 +40,6 @@ param set-default SYS_HAS_BARO 0
 param set-default SYS_HAS_GPS 0
 param set-default SYS_HAS_MAG 0
 param set-default SENS_BOARD_ROT 14
-# Every IMU is published so the three EKF2 instances get one each.
-param set-default SENS_IMU_MODE 0
 
 # UAVCAN
 param set-default UAVCAN_ENABLE 2
@@ -70,8 +68,6 @@ param set-default EKF2_EVA_NOISE 0.02
 param set-default EKF2_HDG_GATE 5.0
 param set-default EKF2_GPS_CTRL 0
 param set-default EKF2_HGT_REF 3
-# Three EKF2 instances, one per IMU, keep the innovation-based IMU failover.
-param set-default EKF2_MULTI_IMU 3
 # No magnetometer on this airframe: explicit NONE, never auto.
 param set-default EKF2_MAG_TYPE 5
 param set-default EKF2_RNG_K_GATE 1.0
@@ -143,12 +139,6 @@ param set-default MIS_TAKEOFF_ALT 1.0
 
 # MPC
 # Terrain hold (2) climbs a hands-off hover when an AMR passes underneath.
-# Attitude gains, auto yaw limits and the gyro filter tuned on this airframe; the firmware defaults differ.
-param set-default MC_ROLL_P 6.5
-param set-default MC_PITCH_P 6.5
-param set-default MPC_YAWRAUTO_MAX 45.0
-param set-default MPC_YAWRAUTO_ACC 60.0
-param set-default IMU_DGYRO_CUTOFF 30.0
 param set-default MPC_ALT_MODE 0
 param set-default MPC_LAND_ALT3 0.4
 # Faster than MPC_LAND_SPEED under MPC_LAND_ALT3: a slower final descent floats in ground effect.
