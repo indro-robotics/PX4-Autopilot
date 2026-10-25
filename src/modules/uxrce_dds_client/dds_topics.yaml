@@ -108,6 +108,21 @@ publications:
     type: px4_msgs::msg::GimbalDeviceAttitudeStatus
     rate_limit: 20.
 
+  - topic: /fmu/out/distance_sensor
+    type: px4_msgs::msg::DistanceSensor
+
+  - topic: /fmu/out/log_message
+    type: px4_msgs::msg::LogMessage
+
+  - topic: /fmu/out/mavlink_log
+    type: px4_msgs::msg::MavlinkLog
+
+  - topic: /fmu/out/logger_status
+    type: px4_msgs::msg::LoggerStatus
+
+  - topic: /fmu/out/mission_result
+    type: px4_msgs::msg::MissionResult
+
 # Create uORB::Publication
 subscriptions:
   - topic: /fmu/in/register_ext_component_request
