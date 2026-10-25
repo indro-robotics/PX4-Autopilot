@@ -78,7 +78,7 @@ void LoggedTopics::add_default_topics()
 	add_optional_topic("gps_dump");
 	add_optional_topic("gimbal_controls", 200);
 	add_optional_topic("gripper");
-	add_optional_topic("heater_status");
+	add_optional_topic("heater_status", 1000);
 	add_topic("home_position");
 	add_topic("hover_thrust_estimate", 100);
 	add_topic("input_rc", 500);
@@ -193,7 +193,7 @@ void LoggedTopics::add_default_topics()
 	// log all raw sensors at minimal rate (at least 1 Hz)
 	add_topic_multi("battery_status", 200, 3);
 	add_topic_multi("differential_pressure", 1000, 2);
-	add_topic_multi("distance_sensor", 1000, 2);
+	add_topic_multi("distance_sensor", 100, 2);
 	add_optional_topic_multi("sensor_accel", 1000, 4);
 	add_topic_multi("sensor_baro", 1000, 4);
 	add_topic_multi("sensor_gps", 1000, 2);
@@ -206,6 +206,7 @@ void LoggedTopics::add_default_topics()
 	add_topic_multi("vehicle_imu_status", 1000, 4);
 	add_optional_topic_multi("vehicle_magnetometer", 500, 4);
 	add_topic("vehicle_optical_flow", 500);
+	add_topic("vehicle_visual_odometry", 100);
 	add_topic("aux_global_position", 500);
 	//add_optional_topic("vehicle_optical_flow_vel", 100);
 	add_optional_topic("pps_capture");
