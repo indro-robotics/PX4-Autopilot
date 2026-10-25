@@ -37,8 +37,8 @@
  * Goto stream governance of the Auto flight task's loiter target. While a goto stream is fresh the
  * target, heading and speed caps are the goto setpoint's; when the stream goes stale the target is
  * the vehicle state at that instant. A navigator target that is not a loiter target, carries a
- * horizontal position or carries a new timestamp ends the session. Without a goto stream the session
- * never governs.
+ * horizontal position or carries a new timestamp ends the session; a fresh stream restarts it on the
+ * same cycle. Without a goto stream the session never governs.
  */
 
 #pragma once

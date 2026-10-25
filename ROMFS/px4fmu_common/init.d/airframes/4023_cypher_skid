@@ -32,7 +32,7 @@ param set-default MAV_2_CONFIG 0
 param set-default UXRCE_DDS_CFG 102
 param set-default UXRCE_DDS_DOM_ID 23
 param set-default UXRCE_DDS_PTCFG 1
-# No GPS: the agent's UTC sets the FMU clock after timesync, so .ulg dates match wall clock.
+# No GPS: the agent's UTC sets the FMU clock after timesync; takes effect after an FMU reboot.
 param set-default UXRCE_DDS_SYNCC 1
 
 # SENSORS
@@ -88,9 +88,9 @@ param set-default EKF2_OF_QMIN 60
 param set-default EKF2_OF_QMIN_GND 40
 
 # RNG
-# Unconditional range aiding keeps a height source on an EV dropout, so Descend and Land stay runnable.
+# Unconditional range aiding keeps local altitude valid on an EV dropout, so Land stays runnable while flow holds horizontal position.
 param set-default EKF2_RNG_CTRL 2
-# De-weights range against EV on the height state, so an AMR deck step moves height by centimetres.
+# De-weights range against EV on the height state.
 param set-default EKF2_RNG_NOISE 0.5
 # Indoor shelf passes drop the median range far enough to trip the multicopter fog block.
 param set-default EKF2_RNG_FOG 0
@@ -141,7 +141,7 @@ param set-default MIS_TAKEOFF_ALT 1.0
 # Terrain hold (2) climbs a hands-off hover when an AMR passes underneath.
 param set-default MPC_ALT_MODE 0
 param set-default MPC_LAND_ALT3 0.4
-# Above MPC_LAND_SPEED below MPC_LAND_ALT3: a slower final descent floats in ground effect.
+# Faster than MPC_LAND_SPEED under MPC_LAND_ALT3: a slower final descent floats in ground effect.
 param set-default MPC_LAND_CRWL 3.0
 param set-default MPC_LAND_RC_HELP 1
 param set-default MPC_LAND_SPEED 0.7

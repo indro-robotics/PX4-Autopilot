@@ -621,7 +621,7 @@ MissionBlock::mission_item_to_position_setpoint(const mission_item_s &item, posi
 		return false;
 	}
 
-	// Navigator items carry no horizontal target; the FSM's goto governs position.
+	// Navigator items carry no horizontal target; FlightTaskAuto locks xy and the Hold goto session sets it.
 	sp->lat = NAN;
 	sp->lon = NAN;
 	sp->alt = get_absolute_altitude_for_item(item);

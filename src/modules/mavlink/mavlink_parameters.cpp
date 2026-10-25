@@ -321,7 +321,7 @@ MavlinkParametersManager::send()
 
 #if defined(CONFIG_MAVLINK_UAVCAN_PARAMETERS)
 
-	// nothing clears the wait flag when a node stops responding, so the queued reads are never sent
+	// Nothing clears the wait flag when a node stops responding, so the queued reads are never sent
 	if (_uavcan_waiting_for_request_response && (hrt_elapsed_time(&_uavcan_request_sent) > 1_s)) {
 		_uavcan_waiting_for_request_response = false;
 		_uavcan_request_retries++;
