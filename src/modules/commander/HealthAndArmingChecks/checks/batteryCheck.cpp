@@ -119,20 +119,32 @@ void BatteryChecks::checkAndReport(const Context &context, Report &reporter)
 
 		if (!_last_armed && context.isArmed()) {
 			_battery_connected_at_arming[index] = battery.connected;
+			_battery_disconnected_timestamp[index] = 0;
+		}
+
+		if (battery.connected) {
+			_battery_disconnected_timestamp[index] = 0;
 		}
 
 		if (context.isArmed() && !battery.connected && _battery_connected_at_arming[index]) { // If disconnected after arming
-			/* EVENT
-			 */
-			reporter.healthFailure<uint8_t>(NavModes::All, health_component_t::battery, events::ID("check_battery_disconnected"),
-							events::Log::Emergency, "Battery {1} disconnected", index + 1);
-
-			if (reporter.mavlink_log_pub()) {
-				mavlink_log_critical(reporter.mavlink_log_pub(), "Battery %i disconnected\t", index + 1);
+			if (_battery_disconnected_timestamp[index] == 0) {
+				_battery_disconnected_timestamp[index] = hrt_absolute_time();
 			}
 
-			// trigger a battery failsafe action if a battery disconnects in flight
-			worst_warning = battery_status_s::WARNING_CRITICAL;
+			// A single failed power-monitor read publishes a disconnected sample; COM_BAT_DISC_T bridges it
+			if (hrt_elapsed_time(&_battery_disconnected_timestamp[index]) >= (hrt_abstime)(_param_com_bat_disc_t.get() * 1e6f)) {
+				/* EVENT
+				 */
+				reporter.healthFailure<uint8_t>(NavModes::All, health_component_t::battery, events::ID("check_battery_disconnected"),
+								events::Log::Emergency, "Battery {1} disconnected", index + 1);
+
+				if (reporter.mavlink_log_pub()) {
+					mavlink_log_critical(reporter.mavlink_log_pub(), "Battery %i disconnected\t", index + 1);
+				}
+
+				// trigger a battery failsafe action if a battery disconnects in flight
+				worst_warning = battery_status_s::WARNING_CRITICAL;
+			}
 		}
 
 		if (battery.connected) {

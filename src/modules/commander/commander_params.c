@@ -996,6 +996,24 @@ PARAM_DEFINE_INT32(COM_ARMABLE, 1);
 PARAM_DEFINE_FLOAT(COM_ARM_BAT_MIN, -1.f);
 
 /**
+ * Battery disconnect failsafe delay
+ *
+ * A battery that was connected at arming and reports disconnected in flight
+ * triggers the critical-battery failsafe only after it has reported
+ * disconnected for this long without recovering.
+ *
+ * A value of 0 triggers on the first disconnected sample.
+ *
+ * @unit s
+ * @min 0.0
+ * @max 5.0
+ * @decimal 1
+ * @increment 0.1
+ * @group Commander
+ */
+PARAM_DEFINE_FLOAT(COM_BAT_DISC_T, 2.0f);
+
+/**
  * Enable throw-start
  *
  * Allows to start the vehicle by throwing it into the air.

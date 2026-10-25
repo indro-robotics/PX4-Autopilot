@@ -55,9 +55,11 @@ private:
 	uORB::Subscription					_rtl_time_estimate_sub{ORB_ID(rtl_time_estimate)};
 	bool _last_armed{false};
 	bool _battery_connected_at_arming[battery_status_s::MAX_INSTANCES] {};
+	hrt_abstime _battery_disconnected_timestamp[battery_status_s::MAX_INSTANCES] {};
 
 	DEFINE_PARAMETERS_CUSTOM_PARENT(HealthAndArmingCheckBase,
 					(ParamFloat<px4::params::COM_ARM_BAT_MIN>) _param_com_arm_bat_min,
-					(ParamInt<px4::params::CBRK_SUPPLY_CHK>) _param_cbrk_supply_chk
+					(ParamInt<px4::params::CBRK_SUPPLY_CHK>) _param_cbrk_supply_chk,
+					(ParamFloat<px4::params::COM_BAT_DISC_T>) _param_com_bat_disc_t
 				       )
 };
