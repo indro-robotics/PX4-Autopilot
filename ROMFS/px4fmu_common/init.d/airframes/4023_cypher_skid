@@ -62,7 +62,7 @@ param set-default CAL_MAG0_PRIO 0
 param set-default EKF2_BARO_CTRL 0
 param set-default EKF2_EV_CTRL 11
 param set-default EKF2_EV_NOISE_MD 1
-# cuVSLAM is the only yaw reference; ev_yaw_control.cpp squares this, so 0.02 rad is 1.1 deg one-sigma.
+# EV is the only yaw reference: 0.02 rad is 1.1 deg one-sigma.
 param set-default EKF2_EVA_NOISE 0.02
 # Matches EKF2_EVP_GATE: a rejected yaw sample leaves yaw on the gyro.
 param set-default EKF2_HDG_GATE 5.0
@@ -162,7 +162,7 @@ param set-default BAT1_N_CELLS 6
 param set-default BAT1_R_INTERNAL 0.007
 param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
-# Li-ion cells, not LiPo: 2.8 V per cell under load is the empty point for this chemistry.
+# Li-ion cells: 2.8 V per cell under load is empty.
 param set-default BAT1_V_EMPTY 2.8
 param set-default BAT2_CAPACITY -1
 param set-default BAT2_N_CELLS 1

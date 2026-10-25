@@ -701,7 +701,7 @@ ssize_t LogWriterFile::LogFileBuffer::write_to_file(const void *buffer, size_t s
 {
 	perf_begin(_perf_write);
 	ssize_t ret = ::write(_fd, buffer, size);
-	// The fsync below runs after a failed write and sets errno itself, so the write's value is taken here.
+	// Read before the fsync below, which overwrites errno.
 	write_errno = (ret < 0) ? errno : 0;
 	perf_end(_perf_write);
 
