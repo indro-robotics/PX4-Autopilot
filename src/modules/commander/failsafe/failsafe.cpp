@@ -680,12 +680,12 @@ FailsafeBase::Action Failsafe::checkModeFallback(const failsafe_flags_s &status_
 		}
 	}
 
-	// PosCtrl/PositionSlow -> AltCtrl
+	// PosCtrl/PositionSlow -> Descend: position loss lands in place
 	if ((user_intended_mode == vehicle_status_s::NAVIGATION_STATE_POSCTL ||
 	     user_intended_mode == vehicle_status_s::NAVIGATION_STATE_POSITION_SLOW)
 	    && !modeCanRun(status_flags, user_intended_mode)) {
-		action = Action::FallbackAltCtrl;
-		user_intended_mode = vehicle_status_s::NAVIGATION_STATE_ALTCTL;
+		action = Action::Descend;
+		user_intended_mode = vehicle_status_s::NAVIGATION_STATE_DESCEND;
 	}
 
 	// AltCtrl -> Stabilized
