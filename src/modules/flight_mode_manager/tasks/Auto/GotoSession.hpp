@@ -34,11 +34,11 @@
 /**
  * @file GotoSession.hpp
  *
- * Goto stream governance of the Auto flight task's loiter target. While a goto stream is fresh the
- * target, heading and speed caps are the goto setpoint's; when the stream goes stale the target is
- * the vehicle state at that instant. A navigator target that is not a loiter target, carries a
- * horizontal position or carries a new timestamp ends the session; a fresh stream restarts it on the
- * same cycle. Without a goto stream the session never governs.
+ * A goto stream governs the Auto flight task's loiter target, whatever position the navigator
+ * target carries. While a goto stream is fresh the target, heading and speed caps are the goto
+ * setpoint's; when the stream goes stale the target is the vehicle state at that instant. A navigator
+ * target that is not a loiter target or carries a new timestamp ends the session; a fresh stream
+ * restarts it on the same cycle. Without a goto stream the session never governs.
  */
 
 #pragma once
@@ -66,18 +66,16 @@ public:
 
 	/**
 	 * @param loiter the navigator target is a loiter target the session may govern
-	 * @param has_xy the navigator target carries a horizontal position
 	 * @param navigator_stamp timestamp of the navigator's current setpoint, rewritten when it issues a new target
 	 */
-	void update(const uint64_t now, const Input &in, const bool loiter, const bool has_xy,
-		    const uint64_t navigator_stamp, const matrix::Vector3f &position, const float yaw)
+	void update(const uint64_t now, const Input &in, const bool loiter, const uint64_t navigator_stamp,
+		    const matrix::Vector3f &position, const float yaw)
 	{
-		if (!loiter || has_xy) {
+		if (!loiter) {
 			_state = State::none;
 			return;
 		}
 
-		// A new navigator target ends the session; a fresh stream restarts it on the same cycle.
 		if ((_state != State::none) && (navigator_stamp != _navigator_stamp)) {
 			_state = State::none;
 		}

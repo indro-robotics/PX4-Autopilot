@@ -350,9 +350,12 @@ bool FlightTaskAuto::_evaluateTriplets()
 	// Check if triplet is valid. There must be at least a valid altitude.
 	const bool triplet_valid = _sub_triplet_setpoint.get().current.valid
 				   && PX4_ISFINITE(_sub_triplet_setpoint.get().current.alt);
-	const bool triplet_has_xy = triplet_valid && PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
-				    && PX4_ISFINITE(_sub_triplet_setpoint.get().current.lon);
-	_updateGotoSession(triplet_valid, triplet_has_xy);
+	_updateGotoSession(triplet_valid);
+
+	if (_goto_session.governs()) {
+		// After the session the lock restarts where the vehicle is.
+		_lock_position_xy.setAll(NAN);
+	}
 
 	if (!triplet_valid) {
 		// Best we can do is to just set all waypoints to current state
@@ -391,15 +394,18 @@ bool FlightTaskAuto::_evaluateTriplets()
 	// Temporary target variable where we save the local reprojection of the latest navigator current triplet.
 	Vector3f tmp_target;
 
-	if (!triplet_has_xy) {
-		// No position provided in xy. Lock position
-		if (_goto_session.governs()) {
-			// The lock follows the session so a later navigator target without xy stays in place.
-			_lock_position_xy = _goto_session.target().xy();
-			tmp_target(0) = _lock_position_xy(0);
-			tmp_target(1) = _lock_position_xy(1);
+	// Hold locks horizontal position where the vehicle is; a stored loiter point is not flown back to.
+	const bool hold_in_place = (_sub_vehicle_status.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER)
+				   && ((WaypointType)_sub_triplet_setpoint.get().current.type == WaypointType::loiter);
 
-		} else if (!_lock_position_xy.isAllFinite()) {
+	if (_goto_session.governs()) {
+		tmp_target = _goto_session.target();
+
+	} else if (hold_in_place
+		   || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
+		   || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.lon)) {
+		// No horizontal target, or Hold: lock position
+		if (!_lock_position_xy.isAllFinite()) {
 			tmp_target(0) = _lock_position_xy(0) = _position(0);
 			tmp_target(1) = _lock_position_xy(1) = _position(1);
 
@@ -417,10 +423,8 @@ bool FlightTaskAuto::_evaluateTriplets()
 					    tmp_target(0), tmp_target(1));
 	}
 
-	tmp_target(2) = -(_sub_triplet_setpoint.get().current.alt - _reference_altitude);
-
-	if (_goto_session.governs()) {
-		tmp_target(2) = _goto_session.target()(2);
+	if (!_goto_session.governs()) {
+		tmp_target(2) = -(_sub_triplet_setpoint.get().current.alt - _reference_altitude);
 	}
 
 	// Check if anything has changed. We do that by comparing the temporary target
@@ -531,7 +535,7 @@ bool FlightTaskAuto::_evaluateTriplets()
 	return true;
 }
 
-void FlightTaskAuto::_updateGotoSession(const bool triplet_valid, const bool has_xy)
+void FlightTaskAuto::_updateGotoSession(const bool triplet_valid)
 {
 	_sub_goto_setpoint.update();
 	const goto_setpoint_s &goto_setpoint = _sub_goto_setpoint.get();
@@ -548,14 +552,13 @@ void FlightTaskAuto::_updateGotoSession(const bool triplet_valid, const bool has
 
 	const position_setpoint_s &current = _sub_triplet_setpoint.get().current;
 
-	// Mission and RTL loiter items carry no xy either, so the nav state confines the session to Hold.
-	// An invalid triplet counts as a loiter target, as in the stock fallback above.
+	// Hold only: mission and RTL loiter items keep their own target; an invalid triplet counts as loiter.
 	const bool loiter = !_goto_session_grounded
 			    && (!triplet_valid || ((WaypointType)current.type == WaypointType::loiter))
 			    && (_sub_vehicle_status.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER);
 	_goto_session_grounded = false;
 
-	_goto_session.update(_time_stamp_current, in, loiter, has_xy, current.timestamp, _position, _yaw);
+	_goto_session.update(_time_stamp_current, in, loiter, current.timestamp, _position, _yaw);
 }
 
 void FlightTaskAuto::_set_heading_from_mode()

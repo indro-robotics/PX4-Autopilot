@@ -621,9 +621,8 @@ MissionBlock::mission_item_to_position_setpoint(const mission_item_s &item, posi
 		return false;
 	}
 
-	// Navigator items carry no horizontal target; FlightTaskAuto locks xy and the Hold goto session sets it.
-	sp->lat = NAN;
-	sp->lon = NAN;
+	sp->lat = item.lat;
+	sp->lon = item.lon;
 	sp->alt = get_absolute_altitude_for_item(item);
 	sp->yaw = item.yaw;
 	sp->loiter_radius = (fabsf(item.loiter_radius) > FLT_EPSILON) ? fabsf(item.loiter_radius) :

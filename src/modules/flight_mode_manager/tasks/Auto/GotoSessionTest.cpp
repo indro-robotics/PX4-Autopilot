@@ -84,7 +84,7 @@ TEST(GotoSession, NoStreamNeverGoverns)
 	GotoSession::Input none;
 
 	for (uint64_t now = 0; now < 5 * kStamp; now += kStamp / 4) {
-		session.update(now, none, true, false, kNav, kVehicle, kYaw);
+		session.update(now, none, true, kNav, kVehicle, kYaw);
 		expectNoOverrides(session);
 	}
 
@@ -93,14 +93,14 @@ TEST(GotoSession, NoStreamNeverGoverns)
 	EXPECT_FALSE(session.governs());
 
 	// A zero timestamp marks a goto_setpoint never received, even with a finite position inside the window.
-	session.update(1000, freshInput(0), true, false, kNav, kVehicle, kYaw);
+	session.update(1000, freshInput(0), true, kNav, kVehicle, kYaw);
 	expectNoOverrides(session);
 }
 
 TEST(GotoSession, FreshStreamSetsTargetHeadingAndCaps)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
 
 	EXPECT_TRUE(session.governs());
 	EXPECT_TRUE(session.fresh());
@@ -117,7 +117,7 @@ TEST(GotoSession, UnsetOptionalFieldsReadNaN)
 	in.control_heading = false;
 	in.set_max_horizontal_speed = false;
 	in.set_max_vertical_speed = false;
-	session.update(kStamp + 1000, in, true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, in, true, kNav, kVehicle, kYaw);
 
 	EXPECT_TRUE(session.governs());
 	EXPECT_TRUE(std::isnan(session.heading()));
@@ -129,7 +129,7 @@ TEST(GotoSession, UnsetOptionalFieldsReadNaN)
 	in.heading = NAN;
 	in.set_max_horizontal_speed = true;
 	in.max_horizontal_speed = INFINITY;
-	session.update(kStamp + 2000, in, true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 2000, in, true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(std::isnan(session.heading()));
 	EXPECT_TRUE(std::isnan(session.maxHorizontalSpeed()));
 }
@@ -137,11 +137,11 @@ TEST(GotoSession, UnsetOptionalFieldsReadNaN)
 TEST(GotoSession, StaleStreamHoldsVehicleState)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
 
 	// One cycle past the window: the vehicle state is the target and the stream's caps are gone.
 	const uint64_t stale = kStamp + GotoSession::TIMEOUT_US;
-	session.update(stale, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(stale, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.governs());
 	EXPECT_FALSE(session.fresh());
 	expectVector(session.target(), kVehicle);
@@ -151,7 +151,7 @@ TEST(GotoSession, StaleStreamHoldsVehicleState)
 
 	// The vehicle moves on; the held target does not follow it.
 	const Vector3f later{3.f, 3.f, -3.f};
-	session.update(stale + kStamp, freshInput(), true, false, kNav, later, 2.f);
+	session.update(stale + kStamp, freshInput(), true, kNav, later, 2.f);
 	EXPECT_TRUE(session.governs());
 	expectVector(session.target(), kVehicle);
 	EXPECT_FLOAT_EQ(session.heading(), kYaw);
@@ -164,10 +164,10 @@ TEST(GotoSession, FreshnessWindowMatchesGotoControl)
 	EXPECT_EQ(timeout, 500000u);
 
 	GotoSession session;
-	session.update(kStamp + 499999, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 499999, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.fresh());
 
-	session.update(kStamp + 500000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 500000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_FALSE(session.fresh());
 	EXPECT_TRUE(session.governs());
 	expectVector(session.target(), kVehicle);
@@ -178,12 +178,12 @@ TEST(GotoSession, NonFinitePositionIsNotFresh)
 	GotoSession session;
 	GotoSession::Input in = freshInput();
 	in.position(1) = NAN;
-	session.update(kStamp + 1000, in, true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, in, true, kNav, kVehicle, kYaw);
 	EXPECT_FALSE(session.governs());
 
 	// Mid-session the same message ends the fresh phase and holds the vehicle state.
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
-	session.update(kStamp + 2000, in, true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
+	session.update(kStamp + 2000, in, true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.governs());
 	EXPECT_FALSE(session.fresh());
 	expectVector(session.target(), kVehicle);
@@ -192,43 +192,51 @@ TEST(GotoSession, NonFinitePositionIsNotFresh)
 TEST(GotoSession, HeldWithoutVehicleStateKeepsGotoTarget)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
 	const Vector3f unknown{NAN, NAN, NAN};
-	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, false, kNav, unknown, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, kNav, unknown, kYaw);
 	EXPECT_TRUE(session.governs());
 	expectVector(session.target(), kGoto);
 }
 
-TEST(GotoSession, NavigatorHorizontalTargetEndsSession)
+TEST(GotoSession, LoiterTargetWithCoordinatesStaysGoverned)
 {
+	// Hold publishes its loiter point once, with coordinates and a fixed stamp; the stream alone decides the target.
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
-	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, false, kNav, kVehicle, kYaw);
-	EXPECT_TRUE(session.governs());
+	const uint64_t cycle = 20000;
+	uint64_t now = kStamp;
 
-	session.update(kStamp + GotoSession::TIMEOUT_US + 1000, freshInput(), true, true, kNav, kVehicle, kYaw);
-	expectNoOverrides(session);
+	for (; now < kStamp + GotoSession::TIMEOUT_US; now += cycle) {
+		session.update(now, freshInput(), true, kNav, kVehicle, kYaw);
+		EXPECT_TRUE(session.fresh()) << "t " << now;
+		expectVector(session.target(), kGoto);
+	}
 
-	// A later target without horizontal position does not revive a stale session.
-	session.update(kStamp + GotoSession::TIMEOUT_US + 2000, freshInput(), true, false, kNav, kVehicle, kYaw);
-	EXPECT_FALSE(session.governs());
+	session.update(now, freshInput(), true, kNav, kVehicle, kYaw);
+
+	for (const uint64_t end = now + 10 * kStamp; now < end; now += cycle) {
+		session.update(now, freshInput(), true, kNav, Vector3f{9.f, 9.f, -9.f}, 2.f);
+		EXPECT_TRUE(session.governs()) << "t " << now;
+		expectVector(session.target(), kVehicle);
+		EXPECT_FLOAT_EQ(session.heading(), kYaw);
+	}
 }
 
 TEST(GotoSession, NonLoiterTargetEndsFreshSession)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.fresh());
 
 	// Takeoff, land and position targets keep their own target, heading and limits while the stream is fresh.
-	session.update(kStamp + 2000, freshInput(), false, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 2000, freshInput(), false, kNav, kVehicle, kYaw);
 	expectNoOverrides(session);
 
-	session.update(kStamp + 3000, freshInput(), false, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 3000, freshInput(), false, kNav, kVehicle, kYaw);
 	expectNoOverrides(session);
 
 	// Back on a loiter target, governance resumes only while the stream is fresh.
-	session.update(kStamp + 4000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 4000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.fresh());
 	expectVector(session.target(), kGoto);
 }
@@ -236,28 +244,28 @@ TEST(GotoSession, NonLoiterTargetEndsFreshSession)
 TEST(GotoSession, NonLoiterTargetEndsHeldSession)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
-	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.governs());
 
-	session.update(kStamp + GotoSession::TIMEOUT_US + 1000, freshInput(), false, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US + 1000, freshInput(), false, kNav, kVehicle, kYaw);
 	expectNoOverrides(session);
 
 	// A return to loiter with the stream still stale leaves the navigator target in charge.
-	session.update(kStamp + GotoSession::TIMEOUT_US + 2000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US + 2000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_FALSE(session.governs());
 }
 
 TEST(GotoSession, FreshStreamResumesFromHeld)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
-	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_FALSE(session.fresh());
 
 	GotoSession::Input resumed = freshInput(kStamp + 2 * GotoSession::TIMEOUT_US);
 	resumed.position = Vector3f{9.f, 9.f, -9.f};
-	session.update(resumed.timestamp + 1000, resumed, true, false, kNav, kVehicle, kYaw);
+	session.update(resumed.timestamp + 1000, resumed, true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.fresh());
 	expectVector(session.target(), resumed.position);
 	EXPECT_FLOAT_EQ(session.maxHorizontalSpeed(), 0.25f);
@@ -266,7 +274,7 @@ TEST(GotoSession, FreshStreamResumesFromHeld)
 TEST(GotoSession, EstimatorResetShiftsHeldTargetOnly)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
 
 	// Fresh: the stream owns the target, a reset does not move it.
 	session.shiftTarget({1.f, 2.f, 3.f});
@@ -274,7 +282,7 @@ TEST(GotoSession, EstimatorResetShiftsHeldTargetOnly)
 	expectVector(session.target(), kGoto);
 	EXPECT_FLOAT_EQ(session.heading(), 1.2f);
 
-	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, kNav, kVehicle, kYaw);
 	session.shiftTarget({1.f, 2.f, NAN});
 	expectVector(session.target(), kVehicle + Vector3f{1.f, 2.f, 0.f});
 	session.shiftTarget({NAN, NAN, -0.5f});
@@ -290,54 +298,54 @@ TEST(GotoSession, EstimatorResetShiftsHeldTargetOnly)
 TEST(GotoSession, ClearEndsSessionUntilNextFreshStream)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
-	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US, freshInput(), true, kNav, kVehicle, kYaw);
 	session.clear();
 	expectNoOverrides(session);
 
-	session.update(kStamp + GotoSession::TIMEOUT_US + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + GotoSession::TIMEOUT_US + 1000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_FALSE(session.governs());
 
-	session.update(2 * kStamp + 1000, freshInput(2 * kStamp), true, false, kNav, kVehicle, kYaw);
+	session.update(2 * kStamp + 1000, freshInput(2 * kStamp), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.fresh());
 }
 
 TEST(GotoSession, NewNavigatorTargetWhileHeldEndsSession)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
-	session.update(kStamp + 500000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
+	session.update(kStamp + 500000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.governs());
 
 	// Same stamp: the navigator republished the same target, the hold stays.
-	session.update(kStamp + 600000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 600000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.governs());
 	expectVector(session.target(), kVehicle);
 
 	// New stamp with a stale stream: the navigator target takes over.
-	session.update(kStamp + 700000, freshInput(), true, false, kNavNext, kVehicle, kYaw);
+	session.update(kStamp + 700000, freshInput(), true, kNavNext, kVehicle, kYaw);
 	expectNoOverrides(session);
-	session.update(kStamp + 800000, freshInput(), true, false, kNavNext, kVehicle, kYaw);
+	session.update(kStamp + 800000, freshInput(), true, kNavNext, kVehicle, kYaw);
 	EXPECT_FALSE(session.governs());
 }
 
 TEST(GotoSession, NewNavigatorTargetWhileFreshRestartsFresh)
 {
 	GotoSession session;
-	session.update(kStamp + 1000, freshInput(), true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 1000, freshInput(), true, kNav, kVehicle, kYaw);
 	EXPECT_TRUE(session.fresh());
 
 	// The same cycle carries a fresh stream: no fallback to the navigator target, session restarts.
 	GotoSession::Input moved = freshInput(kStamp + 2000);
 	moved.position = Vector3f{7.f, 7.f, -7.f};
-	session.update(kStamp + 3000, moved, true, false, kNavNext, kVehicle, kYaw);
+	session.update(kStamp + 3000, moved, true, kNavNext, kVehicle, kYaw);
 	EXPECT_TRUE(session.fresh());
 	expectVector(session.target(), moved.position);
 
 	// The new stamp is the recorded one: it holds on a stale stream, the old stamp ends the session.
-	session.update(kStamp + 2000 + 500000, moved, true, false, kNavNext, kVehicle, kYaw);
+	session.update(kStamp + 2000 + 500000, moved, true, kNavNext, kVehicle, kYaw);
 	EXPECT_TRUE(session.governs());
 	expectVector(session.target(), kVehicle);
-	session.update(kStamp + 2000 + 600000, moved, true, false, kNav, kVehicle, kYaw);
+	session.update(kStamp + 2000 + 600000, moved, true, kNav, kVehicle, kYaw);
 	EXPECT_FALSE(session.governs());
 }

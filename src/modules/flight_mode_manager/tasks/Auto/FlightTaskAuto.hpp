@@ -210,7 +210,7 @@ private:
 	matrix::Vector3f _initial_land_position;
 
 	void _smoothYaw(); /**< Smoothen the yaw setpoint. */
-	void _updateGotoSession(const bool triplet_valid, const bool has_xy); /**< Runs the goto session for this cycle. */
+	void _updateGotoSession(const bool triplet_valid); /**< Runs the goto session for this cycle. */
 	bool _evaluateTriplets(); /**< Checks and sets triplets. */
 	bool _isFinite(const position_setpoint_s &sp); /**< Checks if all waypoint triplets are finite. */
 	bool _evaluateGlobalReference(); /**< Check is global reference is available. */
