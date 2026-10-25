@@ -87,6 +87,9 @@ void FlightTaskAuto::reActivate()
 
 	// On ground, reset acceleration and velocity to zero
 	_position_smoothing.reset({0.f, 0.f, 0.f}, {0.f, 0.f, 0.7f}, _position);
+	// Runs every cycle before the takeoff ramp: a goto stream on the ground must not raise want_takeoff.
+	_goto_session.clear();
+	_goto_session_grounded = true;
 }
 
 bool FlightTaskAuto::updateInitialize()
@@ -345,8 +348,13 @@ bool FlightTaskAuto::_evaluateTriplets()
 	// takeoff/land was initiated. Until then we do this kind of logic here.
 
 	// Check if triplet is valid. There must be at least a valid altitude.
+	const bool triplet_valid = _sub_triplet_setpoint.get().current.valid
+				   && PX4_ISFINITE(_sub_triplet_setpoint.get().current.alt);
+	const bool triplet_has_xy = triplet_valid && PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
+				    && PX4_ISFINITE(_sub_triplet_setpoint.get().current.lon);
+	_updateGotoSession(triplet_valid, triplet_has_xy);
 
-	if (!_sub_triplet_setpoint.get().current.valid || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.alt)) {
+	if (!triplet_valid) {
 		// Best we can do is to just set all waypoints to current state
 		_prev_prev_wp = _triplet_prev_wp = _triplet_target = _triplet_next_wp = _position;
 		_type = WaypointType::loiter;
@@ -378,10 +386,15 @@ bool FlightTaskAuto::_evaluateTriplets()
 	// Temporary target variable where we save the local reprojection of the latest navigator current triplet.
 	Vector3f tmp_target;
 
-	if (!PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
-	    || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.lon)) {
+	if (!triplet_has_xy) {
 		// No position provided in xy. Lock position
-		if (!_lock_position_xy.isAllFinite()) {
+		if (_goto_session.governs()) {
+			// The lock follows the session so a later navigator target without xy stays in place.
+			_lock_position_xy = _goto_session.target().xy();
+			tmp_target(0) = _lock_position_xy(0);
+			tmp_target(1) = _lock_position_xy(1);
+
+		} else if (!_lock_position_xy.isAllFinite()) {
 			tmp_target(0) = _lock_position_xy(0) = _position(0);
 			tmp_target(1) = _lock_position_xy(1) = _position(1);
 
@@ -400,6 +413,10 @@ bool FlightTaskAuto::_evaluateTriplets()
 	}
 
 	tmp_target(2) = -(_sub_triplet_setpoint.get().current.alt - _reference_altitude);
+
+	if (_goto_session.governs()) {
+		tmp_target(2) = _goto_session.target()(2);
+	}
 
 	// Check if anything has changed. We do that by comparing the temporary target
 	// to the internal _triplet_target.
@@ -493,6 +510,10 @@ bool FlightTaskAuto::_evaluateTriplets()
 			_yaw_setpoint = NAN;
 			_yawspeed_setpoint = 0.f;
 
+		} else if (PX4_ISFINITE(_goto_session.heading())) {
+			_yaw_setpoint = _goto_session.heading();
+			_yawspeed_setpoint = NAN;
+
 		} else if (PX4_ISFINITE(_sub_triplet_setpoint.get().current.yaw)) {
 			_yaw_setpoint = _sub_triplet_setpoint.get().current.yaw;
 			_yawspeed_setpoint = NAN;
@@ -503,6 +524,32 @@ bool FlightTaskAuto::_evaluateTriplets()
 	}
 
 	return true;
+}
+
+void FlightTaskAuto::_updateGotoSession(const bool triplet_valid, const bool has_xy)
+{
+	_sub_goto_setpoint.update();
+	const goto_setpoint_s &goto_setpoint = _sub_goto_setpoint.get();
+
+	GotoSession::Input in;
+	in.timestamp = goto_setpoint.timestamp;
+	in.position = Vector3f(goto_setpoint.position);
+	in.control_heading = goto_setpoint.flag_control_heading;
+	in.heading = goto_setpoint.heading;
+	in.set_max_horizontal_speed = goto_setpoint.flag_set_max_horizontal_speed;
+	in.max_horizontal_speed = goto_setpoint.max_horizontal_speed;
+	in.set_max_vertical_speed = goto_setpoint.flag_set_max_vertical_speed;
+	in.max_vertical_speed = goto_setpoint.max_vertical_speed;
+
+	const position_setpoint_s &current = _sub_triplet_setpoint.get().current;
+
+	// Mission and RTL loiter items carry no xy either, so the nav state confines the session to Hold.
+	const bool loiter = !_goto_session_grounded && triplet_valid
+			    && ((WaypointType)current.type == WaypointType::loiter)
+			    && (_sub_vehicle_status.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER);
+	_goto_session_grounded = false;
+
+	_goto_session.update(_time_stamp_current, in, loiter, has_xy, current.timestamp, _position, _yaw);
 }
 
 void FlightTaskAuto::_set_heading_from_mode()
@@ -700,6 +747,7 @@ bool FlightTaskAuto::_compute_heading_from_2D_vector(float &heading, Vector2f v)
 void FlightTaskAuto::_ekfResetHandlerPositionXY(const matrix::Vector2f &delta_xy)
 {
 	_position_smoothing.forceSetPosition({_position(0), _position(1), NAN});
+	_goto_session.shiftTarget({delta_xy(0), delta_xy(1), NAN});
 }
 
 void FlightTaskAuto::_ekfResetHandlerVelocityXY(const matrix::Vector2f &delta_vxy)
@@ -710,6 +758,7 @@ void FlightTaskAuto::_ekfResetHandlerVelocityXY(const matrix::Vector2f &delta_vx
 void FlightTaskAuto::_ekfResetHandlerPositionZ(const float delta_z)
 {
 	_position_smoothing.forceSetPosition({NAN, NAN, _position(2)});
+	_goto_session.shiftTarget({NAN, NAN, delta_z});
 }
 
 void FlightTaskAuto::_ekfResetHandlerVelocityZ(const float delta_vz)
@@ -721,6 +770,7 @@ void FlightTaskAuto::_ekfResetHandlerHeading(const float delta_psi)
 {
 	_yaw_setpoint_previous = wrap_pi(_yaw_setpoint_previous + delta_psi);
 	_heading_smoothing.reset(wrap_pi(_heading_smoothing.getSmoothedHeading() + delta_psi));
+	_goto_session.shiftHeading(delta_psi);
 }
 
 void FlightTaskAuto::_checkEmergencyBraking()
@@ -779,7 +829,8 @@ void FlightTaskAuto::_updateTrajConstraints()
 	// update params of the position smoothing
 	_position_smoothing.setMaxAllowedHorizontalError(_param_mpc_xy_err_max.get());
 	_position_smoothing.setVerticalAcceptanceRadius(_param_nav_mc_alt_rad.get());
-	_position_smoothing.setCruiseSpeed(_mc_cruise_speed);
+	_position_smoothing.setCruiseSpeed(PX4_ISFINITE(_goto_session.maxHorizontalSpeed())
+					   ? math::min(_mc_cruise_speed, _goto_session.maxHorizontalSpeed()) : _mc_cruise_speed);
 	_position_smoothing.setHorizontalTrajectoryGain(_param_mpc_xy_traj_p.get());
 	_position_smoothing.setTargetAcceptanceRadius(_target_acceptance_radius);
 
@@ -804,6 +855,10 @@ void FlightTaskAuto::_updateTrajConstraints()
 		float z_accel_constraint = _param_mpc_acc_up_max.get();
 		float z_vel_constraint = _param_mpc_z_v_auto_up.get();
 
+		if (PX4_ISFINITE(_goto_session.maxVerticalSpeed())) {
+			z_vel_constraint = math::min(z_vel_constraint, _goto_session.maxVerticalSpeed());
+		}
+
 		// The constraints are broken because they are used as hard limits by the position controller, so put this here
 		// until the constraints don't do things like cause controller integrators to saturate. Once the controller
 		// doesn't use z speed constraints, this can go in _prepareTakeoffSetpoints(). Accel limit is to
@@ -822,8 +877,14 @@ void FlightTaskAuto::_updateTrajConstraints()
 		_position_smoothing.setMaxAccelerationZ(z_accel_constraint);
 
 	} else { // down
+		float z_vel_constraint = _param_mpc_z_v_auto_dn.get();
+
+		if (PX4_ISFINITE(_goto_session.maxVerticalSpeed())) {
+			z_vel_constraint = math::min(z_vel_constraint, _goto_session.maxVerticalSpeed());
+		}
+
 		_position_smoothing.setMaxAccelerationZ(_param_mpc_acc_down_max.get());
-		_position_smoothing.setMaxVelocityZ(_param_mpc_z_v_auto_dn.get());
+		_position_smoothing.setMaxVelocityZ(z_vel_constraint);
 	}
 
 	// Stretch the constraints of the velocity controller to leave some room for an additional

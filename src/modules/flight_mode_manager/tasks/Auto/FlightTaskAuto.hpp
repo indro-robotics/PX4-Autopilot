@@ -40,6 +40,8 @@
 #pragma once
 
 #include "FlightTask.hpp"
+#include "GotoSession.hpp"
+#include <uORB/topics/goto_setpoint.h>
 #include <uORB/topics/position_setpoint_triplet.h>
 #include <uORB/topics/position_setpoint.h>
 #include <uORB/topics/home_position.h>
@@ -184,6 +186,10 @@ private:
 	bool _yaw_lock{false}; /**< if within acceptance radius, lock yaw to current yaw */
 
 	uORB::SubscriptionData<position_setpoint_triplet_s> _sub_triplet_setpoint{ORB_ID(position_setpoint_triplet)};
+	uORB::SubscriptionData<goto_setpoint_s> _sub_goto_setpoint{ORB_ID(goto_setpoint)};
+
+	GotoSession _goto_session; /**< goto stream governance of the Loiter target */
+	bool _goto_session_grounded{false}; /**< set by the ground re-activation, blocks the session for the next cycle */
 
 	matrix::Vector3f
 	_triplet_target; /**< current triplet from navigator which may differ from the intenal one (_target) depending on the vehicle state. */
@@ -204,6 +210,7 @@ private:
 	matrix::Vector3f _initial_land_position;
 
 	void _smoothYaw(); /**< Smoothen the yaw setpoint. */
+	void _updateGotoSession(const bool triplet_valid, const bool has_xy); /**< Runs the goto session for this cycle. */
 	bool _evaluateTriplets(); /**< Checks and sets triplets. */
 	bool _isFinite(const position_setpoint_s &sp); /**< Checks if all waypoint triplets are finite. */
 	bool _evaluateGlobalReference(); /**< Check is global reference is available. */

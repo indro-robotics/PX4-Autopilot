@@ -428,7 +428,9 @@ void MulticopterPositionControl::Run()
 
 		// If a goto setpoint is available this publishes a trajectory setpoint to go there
 		// If trajectory_setpoint is published elsewhere, do not use the goto setpoint
+		// In auto modes a flight task publishes every cycle and the Loiter task consumes the goto stream itself.
 		const bool goto_setpoint_enable = _vehicle_control_mode.flag_multicopter_position_control_enabled
+						  && !_vehicle_control_mode.flag_control_auto_enabled
 						  && !_trajectory_setpoint_sub.updated();
 
 		if (_goto_control.checkForSetpoint(vehicle_local_position.timestamp_sample, goto_setpoint_enable)) {
