@@ -1011,7 +1011,7 @@ PARAM_DEFINE_FLOAT(COM_ARM_BAT_MIN, -1.f);
  * @increment 0.1
  * @group Commander
  */
-PARAM_DEFINE_FLOAT(COM_BAT_DISC_T, 2.0f);
+PARAM_DEFINE_FLOAT(COM_BAT_DISC_T, 0.f);
 
 /**
  * Enable throw-start
