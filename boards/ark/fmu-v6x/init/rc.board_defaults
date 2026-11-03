@@ -5,8 +5,8 @@
 
 param set-default EKF2_MULTI_IMU 0
 
-# No Ethernet MAVLink: a ground station reaches this vehicle through mavlink-router on the companion.
-param set-default MAV_2_CONFIG 0
+# Mavlink ethernet (CFG 1000)
+param set-default MAV_2_CONFIG 1000
 param set-default MAV_2_BROADCAST 1
 param set-default MAV_2_MODE 0
 param set-default MAV_2_RADIO_CTL 0
