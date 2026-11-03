@@ -109,8 +109,3 @@ src/systemcmds/topic_listener/listener_generated.cpp
 # colcon
 log/
 keys/
-
-# docs bundle: only the sealed zip and its tool are tracked
-.archive/*
-!.archive/archive.zip
-!.archive/skid_archive.sh
