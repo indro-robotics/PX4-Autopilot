@@ -123,6 +123,9 @@ publications:
   - topic: /fmu/out/mission_result
     type: px4_msgs::msg::MissionResult
 
+  - topic: /fmu/out/input_rc
+    type: px4_msgs::msg::InputRc
+
 # Create uORB::Publication
 subscriptions:
   - topic: /fmu/in/register_ext_component_request
