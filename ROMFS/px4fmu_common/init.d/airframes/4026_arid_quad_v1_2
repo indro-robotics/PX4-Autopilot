@@ -27,9 +27,11 @@ param set-default CA_ROTOR3_PY 0.1
 param set-default MOT_POLE_COUNT 12
 
 # COMMS
+# No Ethernet MAVLink: the ground station reaches the vehicle through mavlink-router on the companion.
+param set-default MAV_2_CONFIG 0
 param set-default SER_TEL2_BAUD 3000000
 param set-default UXRCE_DDS_CFG 102
-param set-default UXRCE_DDS_DOM_ID 23
+param set-default UXRCE_DDS_DOM_ID 0
 param set-default UXRCE_DDS_PTCFG 1
 
 # SENSORS
