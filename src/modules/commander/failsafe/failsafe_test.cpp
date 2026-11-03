@@ -34,6 +34,7 @@
 #include <gtest/gtest.h>
 
 #include "framework.h"
+#include "failsafe.h"
 #include <uORB/topics/vehicle_status.h>
 #include "../ModeUtil/mode_requirements.hpp"
 
@@ -528,4 +529,52 @@ TEST_F(FailsafeTest, user_termination)
 	updated_user_intented_mode = failsafe.update(time, state, false, false, failsafe_flags);
 	EXPECT_EQ(updated_user_intented_mode, state.user_intended_mode);
 	EXPECT_EQ(failsafe.selectedAction(), FailsafeBase::Action::Terminate);
+}
+
+TEST_F(FailsafeTest, position_loss_rotary_wing_descends)
+{
+	Failsafe failsafe(nullptr); // the real class: the fixture above stubs the mode fallback
+
+	FailsafeBase::State state{};
+	state.armed = true;
+	state.user_intended_mode = vehicle_status_s::NAVIGATION_STATE_POSCTL;
+	state.vehicle_type = vehicle_status_s::VEHICLE_TYPE_ROTARY_WING;
+	hrt_abstime time = 5_s;
+	failsafe_flags_s failsafe_flags{};
+	mode_util::getModeRequirements(state.vehicle_type, failsafe_flags);
+
+	failsafe.update(time, state, false, false, failsafe_flags);
+	ASSERT_EQ(failsafe.selectedAction(), FailsafeBase::Action::None);
+
+	// Position estimate lost in Position mode: a rotary wing lands in place
+	time += 10_ms;
+	failsafe_flags.local_position_invalid = true;
+	failsafe_flags.local_position_invalid_relaxed = true;
+	failsafe_flags.global_position_invalid = true;
+	failsafe.update(time, state, false, false, failsafe_flags);
+	ASSERT_EQ(failsafe.selectedAction(), FailsafeBase::Action::Descend);
+}
+
+TEST_F(FailsafeTest, position_loss_fixed_wing_keeps_altitude)
+{
+	Failsafe failsafe(nullptr); // the real class: the fixture above stubs the mode fallback
+
+	FailsafeBase::State state{};
+	state.armed = true;
+	state.user_intended_mode = vehicle_status_s::NAVIGATION_STATE_POSCTL;
+	state.vehicle_type = vehicle_status_s::VEHICLE_TYPE_FIXED_WING;
+	hrt_abstime time = 5_s;
+	failsafe_flags_s failsafe_flags{};
+	mode_util::getModeRequirements(state.vehicle_type, failsafe_flags);
+
+	failsafe.update(time, state, false, false, failsafe_flags);
+	ASSERT_EQ(failsafe.selectedAction(), FailsafeBase::Action::None);
+
+	// Position estimate lost in Position mode: a fixed wing falls to Altitude mode, never Descend
+	time += 10_ms;
+	failsafe_flags.local_position_invalid = true;
+	failsafe_flags.local_position_invalid_relaxed = true;
+	failsafe_flags.global_position_invalid = true;
+	failsafe.update(time, state, false, false, failsafe_flags);
+	ASSERT_EQ(failsafe.selectedAction(), FailsafeBase::Action::FallbackAltCtrl);
 }

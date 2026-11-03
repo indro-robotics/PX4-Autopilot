@@ -445,6 +445,7 @@ FailsafeBase::ActionOptions Failsafe::fromRemainingFlightTimeLowActParam(int par
 void Failsafe::checkStateAndMode(const hrt_abstime &time_us, const State &state,
 				 const failsafe_flags_s &status_flags)
 {
+	_vehicle_type = state.vehicle_type;
 	updateArmingState(time_us, state.armed, status_flags);
 
 	const bool in_forward_flight = state.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING
@@ -680,12 +681,19 @@ FailsafeBase::Action Failsafe::checkModeFallback(const failsafe_flags_s &status_
 		}
 	}
 
-	// PosCtrl/PositionSlow -> Descend: land in place without a position estimate
+	// PosCtrl/PositionSlow without a position estimate: a rotary wing lands in place (Descend),
+	// a fixed wing keeps the stock fall to AltCtrl, since Descend would fly it wings level into the ground.
 	if ((user_intended_mode == vehicle_status_s::NAVIGATION_STATE_POSCTL ||
 	     user_intended_mode == vehicle_status_s::NAVIGATION_STATE_POSITION_SLOW)
 	    && !modeCanRun(status_flags, user_intended_mode)) {
-		action = Action::Descend;
-		user_intended_mode = vehicle_status_s::NAVIGATION_STATE_DESCEND;
+		if (_vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
+			action = Action::Descend;
+			user_intended_mode = vehicle_status_s::NAVIGATION_STATE_DESCEND;
+
+		} else {
+			action = Action::FallbackAltCtrl;
+			user_intended_mode = vehicle_status_s::NAVIGATION_STATE_ALTCTL;
+		}
 	}
 
 	// AltCtrl -> Stabilized

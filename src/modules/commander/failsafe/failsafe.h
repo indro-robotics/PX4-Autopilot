@@ -34,6 +34,7 @@
 #pragma once
 
 #include "framework.h"
+#include <uORB/topics/vehicle_status.h>
 
 
 class Failsafe : public FailsafeBase
@@ -51,6 +52,9 @@ protected:
 				       uint8_t user_intended_mode) const override;
 
 private:
+	// The mode fallback carries no State; the type seen by the last checkStateAndMode decides it.
+	uint8_t _vehicle_type{vehicle_status_s::VEHICLE_TYPE_ROTARY_WING};
+
 	void updateArmingState(const hrt_abstime &time_us, bool armed, const failsafe_flags_s &status_flags);
 
 	enum class ManualControlLossExceptionBits : int32_t {
