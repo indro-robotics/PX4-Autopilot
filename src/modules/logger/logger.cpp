@@ -1534,14 +1534,21 @@ struct perf_callback_data_t {
 
 void Logger::handle_file_write_error()
 {
-	// One arm leaves one file: a write failure ends the log rather than opening a second one.
-	if (!_writer.had_file_write_error() || _file_write_error_reported) {
-		return;
+	if (_writer.had_file_write_error() && !_file_write_error_reported) {
+		_file_write_error_reported = true;
+		mavlink_log_critical(&_mavlink_log_pub, "log write failed errno %i",
+				     _writer.file_write_error_errno());
 	}
 
-	_file_write_error_reported = true;
-	mavlink_log_critical(&_mavlink_log_pub, "log write failed errno %i, log ended",
-			     _writer.file_write_error_errno());
+	// Check for write errors, but do not immediately retry
+	if (_writer.had_file_write_error() && !_writer.is_started(LogType::Full, LogWriter::BackendFile)
+	    && _prev_file_log_start_state) {
+		if (_statistics[(int)LogType::Full].start_time_file != 0
+		    && hrt_absolute_time() > _statistics[(int)LogType::Full].start_time_file + 10_s) {
+			PX4_DEBUG("Restarting due to write failure");
+			start_log_file(LogType::Full);
+		}
+	}
 }
 
 void Logger::perf_iterate_callback(perf_counter_t handle, void *user)
