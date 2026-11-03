@@ -74,6 +74,11 @@ bool SerialImpl::configure()
 	int speed;
 
 	switch (_baudrate) {
+	case 0:
+		// special case, if baudrate is 0 it hangs entire system
+		PX4_ERR("baudrate not specified");
+		return false;
+
 	case 9600:   speed = B9600;   break;
 
 	case 19200:  speed = B19200;  break;
@@ -92,15 +97,43 @@ bool SerialImpl::configure()
 
 	case 460800: speed = B460800; break;
 
+#ifndef B500000
+#define B500000 500000
+#endif
+
+	case 500000: speed = B500000; break;
+
+#ifndef B576000
+#define B576000 576000
+#endif
+
+	case 576000: speed = B576000; break;
+
 #ifndef B921600
 #define B921600 921600
 #endif
 
 	case 921600: speed = B921600; break;
 
+#ifndef B1000000
+#define B1000000 1000000
+#endif
+
+	case 1000000: speed = B1000000; break;
+
+#ifndef B1500000
+#define B1500000 1500000
+#endif
+
+	case 1500000: speed = B1500000; break;
+
 	default:
 		speed = _baudrate;
+#ifdef CONFIG_ARCH_CHIP_ESP32
+		PX4_WARN("Using non-standard baudrate: %u", _baudrate);
+#else
 		PX4_WARN("Using non-standard baudrate: %lu", _baudrate);
+#endif
 		break;
 	}
 
@@ -230,6 +263,18 @@ bool SerialImpl::close()
 	return true;
 }
 
+ssize_t SerialImpl::bytesAvailable()
+{
+	if (!_open) {
+		PX4_ERR("Device not open!");
+		return -1;
+	}
+
+	ssize_t bytes_available = 0;
+	int ret = ioctl(_serial_fd, FIONREAD, &bytes_available);
+	return ret >= 0 ? bytes_available : 0;
+}
+
 ssize_t SerialImpl::read(uint8_t *buffer, size_t buffer_size)
 {
 	if (!_open) {
@@ -246,7 +291,7 @@ ssize_t SerialImpl::read(uint8_t *buffer, size_t buffer_size)
 	return ret;
 }
 
-ssize_t SerialImpl::readAtLeast(uint8_t *buffer, size_t buffer_size, size_t character_count, uint32_t timeout_us)
+ssize_t SerialImpl::readAtLeast(uint8_t *buffer, size_t buffer_size, size_t character_count, uint32_t timeout_ms)
 {
 	if (!_open) {
 		PX4_ERR("Cannot readAtLeast from serial device until it has been opened");
@@ -259,6 +304,7 @@ ssize_t SerialImpl::readAtLeast(uint8_t *buffer, size_t buffer_size, size_t char
 	}
 
 	const hrt_abstime start_time_us = hrt_absolute_time();
+	hrt_abstime timeout_us = timeout_ms * 1000;
 	int total_bytes_read = 0;
 
 	while ((total_bytes_read < (int) character_count) && (hrt_elapsed_time(&start_time_us) < timeout_us)) {
@@ -267,11 +313,11 @@ ssize_t SerialImpl::readAtLeast(uint8_t *buffer, size_t buffer_size, size_t char
 		fds[0].fd = _serial_fd;
 		fds[0].events = POLLIN;
 
-		hrt_abstime remaining_time = timeout_us - hrt_elapsed_time(&start_time_us);
+		hrt_abstime elapsed_time_us = hrt_elapsed_time(&start_time_us);
 
-		if (remaining_time <= 0) { break; }
+		if (elapsed_time_us > timeout_us) { break; }
 
-		int ret = poll(fds, sizeof(fds) / sizeof(fds[0]), remaining_time);
+		int ret = poll(fds, sizeof(fds) / sizeof(fds[0]), (timeout_us - elapsed_time_us) / 1000);
 
 		if (ret > 0) {
 			if (fds[0].revents & POLLIN) {
@@ -309,13 +355,73 @@ ssize_t SerialImpl::write(const void *buffer, size_t buffer_size)
 	}
 
 	int written = ::write(_serial_fd, buffer, buffer_size);
-	::fsync(_serial_fd);
 
 	if (written < 0) {
-		PX4_ERR("%s write error %d", _port, written);
+		if (errno != EAGAIN) {
+			PX4_ERR("%s write error %d", _port, written);
+		}
 	}
 
 	return written;
+}
+
+ssize_t SerialImpl::writeBlocking(const void *buffer, size_t buffer_size, uint32_t timeout_ms)
+{
+	if (!_open) {
+		PX4_ERR("Cannot writeBlocking to serial device until it has been opened");
+		return -1;
+	}
+
+	const uint8_t *data = static_cast<const uint8_t *>(buffer);
+	size_t total_written = 0;
+	const hrt_abstime start_time_us = hrt_absolute_time();
+	const hrt_abstime timeout_us = timeout_ms * 1000;
+
+	while (total_written < buffer_size) {
+		if (hrt_elapsed_time(&start_time_us) > timeout_us) {
+			PX4_WARN("Write timeout, sent %zu", total_written);
+			break;
+		}
+
+		pollfd fds[1];
+		fds[0].fd = _serial_fd;
+		fds[0].events = POLLOUT;
+
+		hrt_abstime elapsed_us = hrt_elapsed_time(&start_time_us);
+		int remaining_timeout_ms = (timeout_us - elapsed_us) / 1000;
+
+		if (remaining_timeout_ms <= 0) {
+			break;
+		}
+
+		int result = ::poll(fds, 1, remaining_timeout_ms);
+
+		if (result < 0) {
+			PX4_ERR("poll error %d", errno);
+			return -1;
+		}
+
+		if (fds[0].revents & POLLOUT) {
+			// Write as much as we can
+			ssize_t written = ::write(_serial_fd, data + total_written, buffer_size - total_written);
+
+			if (written < 0) {
+				if (errno == EAGAIN) {
+					// Buffer full, wait a bit and try again
+					px4_usleep(1000);
+					continue;
+				}
+
+				PX4_ERR("Write error: %d", errno);
+				return -1;
+
+			} else if (written > 0) {
+				total_written += written;
+			}
+		}
+	}
+
+	return total_written;
 }
 
 void SerialImpl::flush()

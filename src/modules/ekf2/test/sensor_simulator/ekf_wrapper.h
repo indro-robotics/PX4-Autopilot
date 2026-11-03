@@ -61,6 +61,7 @@ public:
 
 	void setRangeHeightRef();
 	void enableRangeHeightFusion();
+	void enableConditionalRangeHeightFusion();
 	void disableRangeHeightFusion();
 	bool isIntendingRangeHeightFusion() const;
 
@@ -78,6 +79,8 @@ public:
 	void enableGpsFusion();
 	void disableGpsFusion();
 	bool isIntendingGpsFusion() const;
+	bool isGnssFaultDetected() const;
+	void setGnssDeadReckonMode();
 
 	void enableGpsHeadingFusion();
 	void disableGpsHeadingFusion();
@@ -110,12 +113,8 @@ public:
 
 	bool isWindVelocityEstimated() const;
 
-	void enableTerrainRngFusion();
-	void disableTerrainRngFusion();
 	bool isIntendingTerrainRngFusion() const;
 
-	void enableTerrainFlowFusion();
-	void disableTerrainFlowFusion();
 	bool isIntendingTerrainFlowFusion() const;
 
 	Eulerf getEulerAngles() const;

@@ -71,6 +71,10 @@ public:
 
 	bool had_file_write_error() const;
 
+	int file_write_error_errno() const;
+
+	int file_open_error_errno(LogType type) const;
+
 	void start_log_mavlink();
 
 	void stop_log_mavlink();
@@ -173,7 +177,8 @@ public:
 	{
 		if (_log_writer_file) { _log_writer_file->set_encryption_parameters(algorithm, key_idx, exchange_key_idx); }
 	}
-#endif
+#endif // PX4_CRYPTO
+
 private:
 
 	LogWriterFile *_log_writer_file = nullptr;

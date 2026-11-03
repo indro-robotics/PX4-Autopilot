@@ -206,5 +206,23 @@ bool LogWriter::had_file_write_error() const
 	return false;
 }
 
+int LogWriter::file_write_error_errno() const
+{
+	if (_log_writer_file) {
+		return _log_writer_file->write_error_errno();
+	}
+
+	return 0;
+}
+
+int LogWriter::file_open_error_errno(LogType type) const
+{
+	if (_log_writer_file) {
+		return _log_writer_file->open_error_errno(type);
+	}
+
+	return 0;
+}
+
 }
 }

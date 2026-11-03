@@ -39,7 +39,10 @@
 #include <pthread.h>
 #include <drivers/drv_hrt.h>
 #include <perf/perf_counter.h>
-#include <px4_platform_common/crypto.h>
+
+#if defined(PX4_CRYPTO)
+# include <px4_platform_common/crypto.h>
+#endif // PX4_CRYPTO
 
 namespace px4
 {
@@ -134,6 +137,10 @@ public:
 
 	bool had_write_error() const { return _buffers[(int)LogType::Full]._had_write_error.load(); }
 
+	int write_error_errno() const { return _buffers[(int)LogType::Full]._write_error_errno.load(); }
+
+	int open_error_errno(LogType type) const { return _buffers[(int)type]._open_error_errno; }
+
 	pthread_t thread_id() const { return _thread; }
 
 #if defined(PX4_CRYPTO)
@@ -143,7 +150,7 @@ public:
 		_key_idx = key_idx;
 		_exchange_key_idx = exchange_key_idx;
 	}
-#endif
+#endif // PX4_CRYPTO
 
 private:
 	static void *run_helper(void *);
@@ -169,7 +176,8 @@ private:
 	class LogFileBuffer
 	{
 	public:
-		LogFileBuffer(size_t log_buffer_size, perf_counter_t perf_write, perf_counter_t perf_fsync);
+		LogFileBuffer(size_t log_buffer_desired_size, size_t log_buffer_min_size,
+			      perf_counter_t perf_write, perf_counter_t perf_fsync);
 
 		~LogFileBuffer();
 
@@ -190,7 +198,7 @@ private:
 
 		int fd() const { return _fd; }
 
-		inline ssize_t write_to_file(const void *buffer, size_t size, bool call_fsync) const;
+		inline ssize_t write_to_file(const void *buffer, size_t size, bool call_fsync, int &write_errno) const;
 
 		inline void fsync() const;
 
@@ -202,8 +210,11 @@ private:
 
 		bool _should_run = false;
 		px4::atomic_bool _had_write_error{false};
+		px4::atomic_int _write_error_errno{0};
+		int _open_error_errno{0};
 	private:
-		const size_t _buffer_size;
+		size_t _buffer_size;
+		const size_t _buffer_size_min;
 		int	_fd = -1;
 		uint8_t *_buffer = nullptr;
 		size_t _head = 0; ///< next position to write to
@@ -221,14 +232,15 @@ private:
 	pthread_mutex_t		_mtx;
 	pthread_cond_t		_cv;
 	pthread_t _thread = 0;
+
 #if defined(PX4_CRYPTO)
-	bool init_logfile_encryption(const char *filename);
+	bool init_logfile_encryption(const LogType type);
 	PX4Crypto _crypto;
 	int _min_blocksize;
 	px4_crypto_algorithm_t _algorithm;
 	uint8_t _key_idx;
 	uint8_t _exchange_key_idx;
-#endif
+#endif // PX4_CRYPTO
 
 };
 
