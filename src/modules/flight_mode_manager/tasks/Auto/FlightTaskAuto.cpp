@@ -70,7 +70,10 @@ bool FlightTaskAuto::activate(const trajectory_setpoint_s &last_setpoint)
 
 	_position_smoothing.reset(accel_prev, vel_prev, pos_prev);
 
-	_yaw_sp_prev = PX4_ISFINITE(last_setpoint.yaw) ? last_setpoint.yaw : _yaw;
+	_yaw_setpoint_previous = last_setpoint.yaw;
+	_heading_smoothing.reset(PX4_ISFINITE(last_setpoint.yaw) ? last_setpoint.yaw : _yaw,
+				 PX4_ISFINITE(last_setpoint.yawspeed) ? last_setpoint.yawspeed : 0.f);
+
 	_updateTrajConstraints();
 	_is_emergency_braking_active = false;
 	_time_last_cruise_speed_override = 0;
@@ -159,21 +162,16 @@ bool FlightTaskAuto::update()
 		break;
 	}
 
-	if (_param_com_obs_avoid.get()) {
-		_obstacle_avoidance.updateAvoidanceDesiredSetpoints(_position_setpoint, _velocity_setpoint, (int)_type);
-		_obstacle_avoidance.injectAvoidanceSetpoints(_position_setpoint, _velocity_setpoint, _yaw_setpoint,
-				_yawspeed_setpoint);
-	}
-
 	_checkEmergencyBraking();
 	Vector3f waypoints[] = {_prev_wp, _position_setpoint, _next_wp};
 
 	if (isTargetModified()) {
-		// In case object avoidance has injected a new setpoint, we take this as the next waypoints
+		// In case the target has been modified, we take this as the next waypoints
 		waypoints[2] = _position_setpoint;
 	}
 
-	const bool should_wait_for_yaw_align = _param_mpc_yaw_mode.get() == 4 && !_yaw_sp_aligned;
+	const bool should_wait_for_yaw_align = _param_mpc_yaw_mode.get() == int32_t(yaw_mode::towards_waypoint_yaw_first)
+					       && !_yaw_sp_aligned;
 	const bool force_zero_velocity_setpoint = should_wait_for_yaw_align || _is_emergency_braking_active;
 	_updateTrajConstraints();
 	PositionSmoothing::PositionSmoothingSetpoints smoothed_setpoints;
@@ -198,16 +196,14 @@ bool FlightTaskAuto::update()
 		// no valid heading -> generate heading in this flight task
 		// Generate heading along trajectory if possible, otherwise hold the previous yaw setpoint
 		if (!_generateHeadingAlongTraj()) {
-			_yaw_setpoint = PX4_ISFINITE(_yaw_sp_prev) ? _yaw_sp_prev : _yaw;
+			_yaw_setpoint = _yaw_setpoint_previous;
 		}
 	}
 
 	// update previous type
 	_type_previous = _type;
 
-	// If the FlightTask generates a yaw or a yawrate setpoint that exceeds this value
-	// it will see its setpoint constrained here
-	_limitYawRate();
+	_smoothYaw();
 
 	_constraints.want_takeoff = _checkTakeoff();
 
@@ -243,7 +239,7 @@ void FlightTaskAuto::_prepareLandSetpoints()
 	bool range_dist_available = PX4_ISFINITE(_dist_to_bottom);
 
 	if (range_dist_available && _dist_to_bottom <= _param_mpc_land_alt3.get()) {
-		vertical_speed = _param_mpc_land_crawl_speed.get();
+		vertical_speed = _param_mpc_land_crwl.get();
 	}
 
 	if (_type_previous != WaypointType::land) {
@@ -261,9 +257,15 @@ void FlightTaskAuto::_prepareLandSetpoints()
 		// Stick full up -1 -> stop, stick full down 1 -> double the speed
 		vertical_speed *= (1 - _sticks.getThrottleZeroCenteredExpo());
 
+		Vector2f sticks_xy = _sticks.getPitchRollExpo();
+
+		if (sticks_xy.longerThan(FLT_EPSILON)) {
+			// Ensure no unintended yawing when nudging horizontally during initial heading alignment
+			_land_heading = _yaw_setpoint_previous;
+		}
+
 		rcHelpModifyYaw(_land_heading);
 
-		Vector2f sticks_xy = _sticks.getPitchRollExpo();
 		Vector2f sticks_ne = sticks_xy;
 		Sticks::rotateIntoHeadingFrameXY(sticks_ne, _yaw, _land_heading);
 
@@ -284,19 +286,13 @@ void FlightTaskAuto::_prepareLandSetpoints()
 			sticks_xy.setZero();
 		}
 
-		// If ground distance estimate valid (distance sensor) during nudging then limit horizontal speed
-		if (PX4_ISFINITE(_dist_to_bottom)) {
-			// Below 50cm no horizontal speed, above allow per meter altitude 0.5m/s speed
-			max_speed = math::max(0.f, math::min(max_speed, (_dist_to_bottom - .5f) * .5f));
-		}
-
 		_stick_acceleration_xy.setVelocityConstraint(max_speed);
 		_stick_acceleration_xy.generateSetpoints(sticks_xy, _yaw, _land_heading, _position,
 				_velocity_setpoint_feedback.xy(), _deltatime);
 		_stick_acceleration_xy.getSetpoints(_land_position, _velocity_setpoint, _acceleration_setpoint);
 
 	} else {
-		// Make sure we have a valid land position even in the case we loose RC while amending it
+		// Make sure we have a valid land position even in the case we loose manual control while amending it
 		if (!PX4_ISFINITE(_land_position(0))) {
 			_land_position.xy() = Vector2f(_position);
 		}
@@ -308,39 +304,32 @@ void FlightTaskAuto::_prepareLandSetpoints()
 	_gear.landing_gear = landing_gear_s::GEAR_DOWN;
 }
 
-void FlightTaskAuto::_limitYawRate()
+void FlightTaskAuto::_smoothYaw()
 {
 	const float yawrate_max = math::radians(_param_mpc_yawrauto_max.get());
+	_heading_smoothing.setMaxHeadingRate(yawrate_max);
+	_heading_smoothing.setMaxHeadingAccel(math::radians(_param_mpc_yawrauto_acc.get()));
 
 	_yaw_sp_aligned = true;
 
-	if (PX4_ISFINITE(_yaw_setpoint) && PX4_ISFINITE(_yaw_sp_prev)) {
-		// Limit the rate of change of the yaw setpoint
-		const float dyaw_desired = matrix::wrap_pi(_yaw_setpoint - _yaw_sp_prev);
-		const float dyaw_max = yawrate_max * _deltatime;
-		const float dyaw = math::constrain(dyaw_desired, -dyaw_max, dyaw_max);
-		const float yaw_setpoint_sat = matrix::wrap_pi(_yaw_sp_prev + dyaw);
+	if (PX4_ISFINITE(_yaw_setpoint)) {
+		const float yaw_sp_unsmoothed = _yaw_setpoint;
+		_heading_smoothing.update(_yaw_setpoint, _deltatime);
+		_yaw_setpoint = _heading_smoothing.getSmoothedHeading();
+		_yawspeed_setpoint = _heading_smoothing.getSmoothedHeadingRate();
 
 		// The yaw setpoint is aligned when it is within tolerance
-		_yaw_sp_aligned = fabsf(matrix::wrap_pi(_yaw_setpoint - yaw_setpoint_sat)) < math::radians(_param_mis_yaw_err.get());
+		_yaw_sp_aligned = fabsf(matrix::wrap_pi(yaw_sp_unsmoothed - _yaw_setpoint)) < math::radians(_param_mis_yaw_err.get());
 
-		_yaw_setpoint = yaw_setpoint_sat;
-
-		if (!PX4_ISFINITE(_yawspeed_setpoint) && (_deltatime > FLT_EPSILON)) {
-			// Create a feedforward using the filtered derivative
-			_yawspeed_filter.setParameters(_deltatime, .2f);
-			_yawspeed_filter.update(dyaw / _deltatime);
-			_yawspeed_setpoint = _yawspeed_filter.getState();
-		}
+	} else {
+		_heading_smoothing.reset(_yaw, 0.f);
 	}
 
-	_yaw_sp_prev = PX4_ISFINITE(_yaw_setpoint) ? _yaw_setpoint : _yaw;
+	_yaw_setpoint_previous = _yaw_setpoint;
 
 	if (PX4_ISFINITE(_yawspeed_setpoint)) {
 		// The yaw setpoint is aligned when its rate is not saturated
 		_yaw_sp_aligned = _yaw_sp_aligned && (fabsf(_yawspeed_setpoint) < yawrate_max);
-
-		_yawspeed_setpoint = math::constrain(_yawspeed_setpoint, -yawrate_max, yawrate_max);
 	}
 }
 
@@ -361,10 +350,12 @@ bool FlightTaskAuto::_evaluateTriplets()
 	// Check if triplet is valid. There must be at least a valid altitude.
 	const bool triplet_valid = _sub_triplet_setpoint.get().current.valid
 				   && PX4_ISFINITE(_sub_triplet_setpoint.get().current.alt);
-	const bool triplet_has_xy = triplet_valid && PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
-				    && PX4_ISFINITE(_sub_triplet_setpoint.get().current.lon);
-	_updateGotoSession(triplet_valid ? (WaypointType)_sub_triplet_setpoint.get().current.type : WaypointType::loiter,
-			   triplet_has_xy);
+	_updateGotoSession(triplet_valid);
+
+	if (_goto_session.governs()) {
+		// After the session the lock restarts where the vehicle is.
+		_lock_position_xy.setAll(NAN);
+	}
 
 	if (!triplet_valid) {
 		// Best we can do is to just set all waypoints to current state
@@ -400,22 +391,21 @@ bool FlightTaskAuto::_evaluateTriplets()
 	// Ensure planned cruise speed is below the maximum such that the smooth trajectory doesn't get capped
 	_mc_cruise_speed = math::min(_mc_cruise_speed, _param_mpc_xy_vel_max.get());
 
-	if (PX4_ISFINITE(_goto_session.maxHorizontalSpeed())) {
-		_mc_cruise_speed = math::min(_mc_cruise_speed, _goto_session.maxHorizontalSpeed());
-	}
-
 	// Temporary target variable where we save the local reprojection of the latest navigator current triplet.
 	Vector3f tmp_target;
 
-	if (!triplet_has_xy) {
-		// No position provided in xy. Lock position
-		if (_goto_session.governs()) {
-			// The lock follows the session so the land target and a later type change stay in place.
-			_lock_position_xy = _goto_session.target().xy();
-			tmp_target(0) = _lock_position_xy(0);
-			tmp_target(1) = _lock_position_xy(1);
+	// Hold locks horizontal position where the vehicle is; a stored loiter point is not flown back to.
+	const bool hold_in_place = (_sub_vehicle_status.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER)
+				   && ((WaypointType)_sub_triplet_setpoint.get().current.type == WaypointType::loiter);
 
-		} else if (!_lock_position_xy.isAllFinite()) {
+	if (_goto_session.governs()) {
+		tmp_target = _goto_session.target();
+
+	} else if (hold_in_place
+		   || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
+		   || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.lon)) {
+		// No horizontal target, or Hold: lock position
+		if (!_lock_position_xy.isAllFinite()) {
 			tmp_target(0) = _lock_position_xy(0) = _position(0);
 			tmp_target(1) = _lock_position_xy(1) = _position(1);
 
@@ -433,10 +423,8 @@ bool FlightTaskAuto::_evaluateTriplets()
 					    tmp_target(0), tmp_target(1));
 	}
 
-	tmp_target(2) = -(_sub_triplet_setpoint.get().current.alt - _reference_altitude);
-
-	if (_goto_session.governs()) {
-		tmp_target(2) = _goto_session.target()(2);
+	if (!_goto_session.governs()) {
+		tmp_target(2) = -(_sub_triplet_setpoint.get().current.alt - _reference_altitude);
 	}
 
 	// Check if anything has changed. We do that by comparing the temporary target
@@ -478,7 +466,7 @@ bool FlightTaskAuto::_evaluateTriplets()
 			_triplet_prev_wp(2) = -(_sub_triplet_setpoint.get().previous.alt - _reference_altitude);
 
 		} else {
-			_triplet_prev_wp = _position;
+			_triplet_prev_wp = _triplet_target;
 		}
 
 		_prev_was_valid = _sub_triplet_setpoint.get().previous.valid;
@@ -509,17 +497,6 @@ bool FlightTaskAuto::_evaluateTriplets()
 		_updateInternalWaypoints();
 	}
 
-	if (_param_com_obs_avoid.get()
-	    && _sub_vehicle_status.get().vehicle_type == vehicle_status_s::VEHICLE_TYPE_ROTARY_WING) {
-		_obstacle_avoidance.updateAvoidanceDesiredWaypoints(_triplet_target, _yaw_setpoint, _yawspeed_setpoint,
-				_triplet_next_wp,
-				_sub_triplet_setpoint.get().next.yaw,
-				(float)NAN,
-				_weathervane.isActive(), _sub_triplet_setpoint.get().current.type);
-		_obstacle_avoidance.checkAvoidanceProgress(
-			_position, _triplet_prev_wp, _target_acceptance_radius, Vector2f(_closest_pt));
-	}
-
 	// set heading
 	_weathervane.update();
 
@@ -542,7 +519,7 @@ bool FlightTaskAuto::_evaluateTriplets()
 			_yaw_setpoint = NAN;
 			_yawspeed_setpoint = 0.f;
 
-		} else if (_goto_session.governs() && PX4_ISFINITE(_goto_session.heading())) {
+		} else if (PX4_ISFINITE(_goto_session.heading())) {
 			_yaw_setpoint = _goto_session.heading();
 			_yawspeed_setpoint = NAN;
 
@@ -558,7 +535,7 @@ bool FlightTaskAuto::_evaluateTriplets()
 	return true;
 }
 
-void FlightTaskAuto::_updateGotoSession(const WaypointType type, const bool has_xy)
+void FlightTaskAuto::_updateGotoSession(const bool triplet_valid)
 {
 	_sub_goto_setpoint.update();
 	const goto_setpoint_s &goto_setpoint = _sub_goto_setpoint.get();
@@ -573,17 +550,15 @@ void FlightTaskAuto::_updateGotoSession(const WaypointType type, const bool has_
 	in.set_max_vertical_speed = goto_setpoint.flag_set_max_vertical_speed;
 	in.max_vertical_speed = goto_setpoint.max_vertical_speed;
 
-	const bool governed = !_goto_session_grounded
-			      && ((type == WaypointType::loiter) || (type == WaypointType::position)
-				  || (type == WaypointType::land));
+	const position_setpoint_s &current = _sub_triplet_setpoint.get().current;
+
+	// Hold only: mission and RTL loiter items keep their own target; an invalid triplet counts as loiter.
+	const bool loiter = !_goto_session_grounded
+			    && (!triplet_valid || ((WaypointType)current.type == WaypointType::loiter))
+			    && (_sub_vehicle_status.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER);
 	_goto_session_grounded = false;
 
-	if (_goto_session.update(_time_stamp_current, in, governed, has_xy, _sub_triplet_setpoint.get().current.timestamp,
-				 _position, _yaw)) {
-		// The stream fed the position controller directly; the task smoother resumes from the vehicle state.
-		_position_smoothing.forceSetPosition(_position);
-		_position_smoothing.forceSetVelocity(_velocity);
-	}
+	_goto_session.update(_time_stamp_current, in, loiter, current.timestamp, _position, _yaw);
 }
 
 void FlightTaskAuto::_set_heading_from_mode()
@@ -591,32 +566,37 @@ void FlightTaskAuto::_set_heading_from_mode()
 
 	Vector2f v; // Vector that points towards desired location
 
-	switch (_param_mpc_yaw_mode.get()) {
+	switch (yaw_mode(_param_mpc_yaw_mode.get())) {
 
-	case 0: // Heading points towards the current waypoint.
-	case 4: // Same as 0 but yaw first and then go
+	case yaw_mode::towards_waypoint: // Heading points towards the current waypoint.
+	case yaw_mode::towards_waypoint_yaw_first: // Same as 0 but yaw first and then go
 		v = Vector2f(_target) - Vector2f(_position);
 		break;
 
-	case 1: // Heading points towards home.
+	case yaw_mode::towards_home: // Heading points towards home.
 		if (_sub_home_position.get().valid_lpos) {
 			v = Vector2f(&_sub_home_position.get().x) - Vector2f(_position);
 		}
 
 		break;
 
-	case 2: // Heading point away from home.
+	case yaw_mode::away_from_home: // Heading point away from home.
 		if (_sub_home_position.get().valid_lpos) {
 			v = Vector2f(_position) - Vector2f(&_sub_home_position.get().x);
 		}
 
 		break;
 
-	case 3: // Along trajectory.
+	case yaw_mode::along_trajectory: // Along trajectory.
 		// The heading depends on the kind of setpoint generation. This needs to be implemented
 		// in the subclasses where the velocity setpoints are generated.
 		v.setAll(NAN);
 		break;
+
+	case yaw_mode::yaw_fixed: // Yaw fixed.
+		// Yaw is operated via manual control or MAVLINK messages.
+		break;
+
 	}
 
 	if (v.isAllFinite()) {
@@ -676,7 +656,7 @@ bool FlightTaskAuto::_evaluateGlobalReference()
 	}
 
 	// init projection
-	_reference_position.initReference(ref_lat, ref_lon);
+	_reference_position.initReference(ref_lat, ref_lon, _time_stamp_current);
 
 	// check if everything is still finite
 	return PX4_ISFINITE(_reference_altitude) && PX4_ISFINITE(ref_lat) && PX4_ISFINITE(ref_lon);
@@ -685,32 +665,30 @@ bool FlightTaskAuto::_evaluateGlobalReference()
 State FlightTaskAuto::_getCurrentState()
 {
 	// Calculate the vehicle current state based on the Navigator triplets and the current position.
-	const Vector2f u_prev_to_target_xy = Vector2f(_triplet_target - _triplet_prev_wp).unit_or_zero();
-	const Vector2f pos_to_target_xy = Vector2f(_triplet_target - _position);
-	const Vector2f prev_to_pos_xy = Vector2f(_position - _triplet_prev_wp);
+	const Vector3f u_prev_to_target = (_triplet_target - _triplet_prev_wp).unit_or_zero();
+	const Vector3f prev_to_pos = _position - _triplet_prev_wp;
+	const Vector3f pos_to_target = _triplet_target - _position;
+
 	// Calculate the closest point to the vehicle position on the line prev_wp - target
-	const Vector2f closest_pt_xy = Vector2f(_triplet_prev_wp) + u_prev_to_target_xy * (prev_to_pos_xy *
-				       u_prev_to_target_xy);
-	_closest_pt = Vector3f(closest_pt_xy(0), closest_pt_xy(1), _triplet_target(2));
+	_closest_pt = _triplet_prev_wp + u_prev_to_target * (prev_to_pos * u_prev_to_target);
 
 	State return_state = State::none;
 
-	if (u_prev_to_target_xy.length() < FLT_EPSILON) {
+	if (!u_prev_to_target.longerThan(FLT_EPSILON)) {
 		// Previous and target are the same point, so we better don't try to do any special line following
 		return_state = State::none;
 
-	} else if (u_prev_to_target_xy * pos_to_target_xy < 0.0f) {
+	} else if (u_prev_to_target * pos_to_target < 0.0f) {
 		// Target is behind
 		return_state = State::target_behind;
 
-	} else if (u_prev_to_target_xy * prev_to_pos_xy < 0.0f && prev_to_pos_xy.longerThan(_target_acceptance_radius)) {
+	} else if (u_prev_to_target * prev_to_pos < 0.0f && prev_to_pos.longerThan(_target_acceptance_radius)) {
 		// Previous is in front
 		return_state = State::previous_infront;
 
-	} else if (Vector2f(_position - _closest_pt).longerThan(_target_acceptance_radius)) {
+	} else if (_type != WaypointType::land && (_position - _closest_pt).longerThan(_target_acceptance_radius)) {
 		// Vehicle too far from the track
 		return_state = State::offtrack;
-
 	}
 
 	return return_state;
@@ -786,20 +764,21 @@ void FlightTaskAuto::_ekfResetHandlerVelocityXY(const matrix::Vector2f &delta_vx
 	_position_smoothing.forceSetVelocity({_velocity(0), _velocity(1), NAN});
 }
 
-void FlightTaskAuto::_ekfResetHandlerPositionZ(float delta_z)
+void FlightTaskAuto::_ekfResetHandlerPositionZ(const float delta_z)
 {
 	_position_smoothing.forceSetPosition({NAN, NAN, _position(2)});
 	_goto_session.shiftTarget({NAN, NAN, delta_z});
 }
 
-void FlightTaskAuto::_ekfResetHandlerVelocityZ(float delta_vz)
+void FlightTaskAuto::_ekfResetHandlerVelocityZ(const float delta_vz)
 {
 	_position_smoothing.forceSetVelocity({NAN, NAN, _velocity(2)});
 }
 
-void FlightTaskAuto::_ekfResetHandlerHeading(float delta_psi)
+void FlightTaskAuto::_ekfResetHandlerHeading(const float delta_psi)
 {
-	_yaw_sp_prev += delta_psi;
+	_yaw_setpoint_previous = wrap_pi(_yaw_setpoint_previous + delta_psi);
+	_heading_smoothing.reset(wrap_pi(_heading_smoothing.getSmoothedHeading() + delta_psi));
 	_goto_session.shiftHeading(delta_psi);
 }
 
@@ -859,7 +838,8 @@ void FlightTaskAuto::_updateTrajConstraints()
 	// update params of the position smoothing
 	_position_smoothing.setMaxAllowedHorizontalError(_param_mpc_xy_err_max.get());
 	_position_smoothing.setVerticalAcceptanceRadius(_param_nav_mc_alt_rad.get());
-	_position_smoothing.setCruiseSpeed(_mc_cruise_speed);
+	_position_smoothing.setCruiseSpeed(PX4_ISFINITE(_goto_session.maxHorizontalSpeed())
+					   ? math::min(_mc_cruise_speed, _goto_session.maxHorizontalSpeed()) : _mc_cruise_speed);
 	_position_smoothing.setHorizontalTrajectoryGain(_param_mpc_xy_traj_p.get());
 	_position_smoothing.setTargetAcceptanceRadius(_target_acceptance_radius);
 

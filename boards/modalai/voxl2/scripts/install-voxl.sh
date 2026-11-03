@@ -20,7 +20,6 @@ adb shell chmod a+x /usr/bin/voxl-px4-hitl-start
 
 # Push configuration file
 adb shell mkdir -p /etc/modalai
-adb push boards/modalai/voxl2/target/voxl-px4-set-default-parameters.config /etc/modalai
 adb push boards/modalai/voxl2/target/voxl-px4-fake-imu-calibration.config /etc/modalai
 adb push boards/modalai/voxl2/target/voxl-px4-hitl-set-default-parameters.config /etc/modalai
 
@@ -66,7 +65,6 @@ adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-logger"
 adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-manual_control"
 adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-mavlink"
 adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-mavlink_bridge"
-adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-mavlink_tests"
 adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-mb12xx"
 adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-mc_att_control"
 adb shell "cd /usr/bin; /bin/ln -f -s px4 px4-mc_pos_control"

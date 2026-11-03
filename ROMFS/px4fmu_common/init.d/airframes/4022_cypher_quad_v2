@@ -60,7 +60,6 @@ param set-default EKF2_EV_NOISE_MD 1
 param set-default EKF2_GPS_CTRL 0
 param set-default EKF2_HGT_REF 3
 param set-default EKF2_RNG_K_GATE 0.30
-param set-default EKF2_RNG_A_IGATE 0.30
 param set-default EKF2_RNG_A_HMAX 10.0
 
 # IMU
@@ -77,6 +76,8 @@ param set-default EKF2_OF_QMIN 100
 param set-default EKF2_OF_QMIN_GND 100
 
 # RNG
+param set-default EKF2_RNG_FOG 0
+param set-default EKF2_MIN_RNG 0.1
 param set-default EKF2_RNG_POS_X -0.004178
 param set-default EKF2_RNG_POS_Y 0.00992
 param set-default EKF2_RNG_POS_Z 0.013431
@@ -89,7 +90,6 @@ param set-default COM_DISARM_LAND 1.0
 param set-default COM_LOW_BAT_ACT 2
 param set-default COM_OBL_RC_ACT 4
 param set-default COM_OF_LOSS_T 5.0
-param set-default COM_POSCTL_NAVL 1
 param set-default COM_RC_IN_MODE 0
 param set-default COM_RC_LOSS_T 2.0
 param set-default COM_RC_OVERRIDE 3
@@ -99,7 +99,7 @@ param set-default NAV_RCL_ACT 3
 
 # RC
 param set-default RC_CHAN_CNT 16
-param set-default RC_INPUT_PROTO 6
+param set-default RC_CRSF_PRT_CFG 300
 param set-default RC_MAP_ARM_SW 5
 param set-default RC_MAP_FLTMODE 6
 param set-default RC_MAP_KILL_SW 8
@@ -134,10 +134,8 @@ param set-default BAT1_R_INTERNAL 0.0035
 param set-default BAT1_SOURCE 0
 param set-default BAT1_V_CHARGED 4.2
 param set-default BAT1_V_EMPTY 2.7
-param set-default BAT1_V_LOAD_DROP 0.42
 param set-default BAT2_N_CELLS 6
 param set-default BAT2_R_INTERNAL 0.0035
 param set-default BAT2_SOURCE 0
 param set-default BAT2_V_CHARGED 4.2
 param set-default BAT2_V_EMPTY 2.7
-param set-default BAT2_V_LOAD_DROP 0.42
