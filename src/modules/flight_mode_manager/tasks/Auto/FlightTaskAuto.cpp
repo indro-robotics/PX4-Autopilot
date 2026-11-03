@@ -394,17 +394,12 @@ bool FlightTaskAuto::_evaluateTriplets()
 	// Temporary target variable where we save the local reprojection of the latest navigator current triplet.
 	Vector3f tmp_target;
 
-	// Hold locks horizontal position where the vehicle is; a stored loiter point is not flown back to.
-	const bool hold_in_place = (_sub_vehicle_status.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER)
-				   && ((WaypointType)_sub_triplet_setpoint.get().current.type == WaypointType::loiter);
-
 	if (_goto_session.governs()) {
 		tmp_target = _goto_session.target();
 
-	} else if (hold_in_place
-		   || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
+	} else if (!PX4_ISFINITE(_sub_triplet_setpoint.get().current.lat)
 		   || !PX4_ISFINITE(_sub_triplet_setpoint.get().current.lon)) {
-		// No horizontal target, or Hold: lock position
+		// No position setpoint: lock position
 		if (!_lock_position_xy.isAllFinite()) {
 			tmp_target(0) = _lock_position_xy(0) = _position(0);
 			tmp_target(1) = _lock_position_xy(1) = _position(1);
