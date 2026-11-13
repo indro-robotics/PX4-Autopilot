@@ -80,33 +80,29 @@ void UavcanRangefinderBridge::range_sub_cb(const
 		return;
 	}
 
-	if (!_inited) {
+	// Applied on every message: each node publishes its own instance and needs its own limits.
+	uint8_t rangefinder_type = 0;
 
-		uint8_t rangefinder_type = 0;
+	switch (msg.sensor_type) {
+	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_SONAR:
+		rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_ULTRASOUND;
+		break;
 
-		switch (msg.sensor_type) {
-		case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_SONAR:
-			rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_ULTRASOUND;
-			break;
+	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_RADAR:
+		rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR;
+		break;
 
-		case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_RADAR:
-			rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR;
-			break;
-
-		case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_LIDAR:
-		case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_UNDEFINED:
-		default:
-			rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
-			break;
-		}
-
-		rangefinder->set_rangefinder_type(rangefinder_type);
-		rangefinder->set_fov(msg.field_of_view);
-		rangefinder->set_min_distance(_range_min_m);
-		rangefinder->set_max_distance(_range_max_m);
-
-		_inited = true;
+	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_LIDAR:
+	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_UNDEFINED:
+	default:
+		rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
+		break;
 	}
+
+	rangefinder->set_rangefinder_type(rangefinder_type);
+	rangefinder->set_fov(msg.field_of_view);
+	rangefinder->set_min_distance(_range_min_m);
+	rangefinder->set_max_distance(_range_max_m);
 
 	int8_t quality = -1;
 
