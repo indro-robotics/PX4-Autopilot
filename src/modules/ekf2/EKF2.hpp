@@ -404,7 +404,6 @@ private:
 
 	uORB::SubscriptionMultiArray<distance_sensor_s> _distance_sensor_subs{ORB_ID::distance_sensor};
 	hrt_abstime _last_range_sensor_update{0};
-	int _distance_sensor_selected{-1}; // because we can have several distance sensor instances with different orientations
 #endif // CONFIG_EKF2_RANGE_FINDER
 
 	bool _callback_registered{false};

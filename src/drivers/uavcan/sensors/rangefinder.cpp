@@ -104,11 +104,8 @@ void UavcanRangefinderBridge::range_sub_cb(const
 	rangefinder->set_min_distance(_range_min_m);
 	rangefinder->set_max_distance(_range_max_m);
 
-	int8_t quality = -1;
-
-	if (msg.reading_type == uavcan::equipment::range_sensor::Measurement::READING_TYPE_VALID_RANGE) {
-		quality = 100;
-	}
+	// a reading the node does not mark valid is invalid here too, so the estimator leaves it out
+	const int8_t quality = (msg.reading_type == uavcan::equipment::range_sensor::Measurement::READING_TYPE_VALID_RANGE) ? 100 : 0;
 
 	rangefinder->update(hrt_absolute_time(), msg.range, quality);
 }

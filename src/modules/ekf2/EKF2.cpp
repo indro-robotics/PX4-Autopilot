@@ -2542,60 +2542,72 @@ void EKF2::UpdateMagSample(ekf2_timestamps_s &ekf2_timestamps)
 #if defined(CONFIG_EKF2_RANGE_FINDER)
 void EKF2::UpdateRangeSample(ekf2_timestamps_s &ekf2_timestamps)
 {
-	distance_sensor_s distance_sensor;
+	bool updated = false;
 
-	if (_distance_sensor_selected < 0) {
+	for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
+		updated |= _distance_sensor_subs[i].updated();
+	}
 
-		// only consider distance sensors that have updated within the last 0.1s
-		const hrt_abstime timestamp_stale = math::max(ekf2_timestamps.timestamp, 100_ms) - 100_ms;
+	if (!updated) {
+		return;
+	}
 
-		if (_distance_sensor_subs.advertised()) {
-			for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
+	// a sensor silent for 0.1 s drops out of the mean, so one sensor alone still feeds the filter
+	const hrt_abstime timestamp_stale = math::max(ekf2_timestamps.timestamp, 100_ms) - 100_ms;
 
-				if (_distance_sensor_subs[i].update(&distance_sensor)) {
-					// only use the first instace which has the correct orientation
-					if ((distance_sensor.timestamp != 0) && (distance_sensor.timestamp > timestamp_stale)
-					    && (distance_sensor.orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING)) {
+	distance_sensor_s newest{};
+	distance_sensor_s good{};
+	float sum = 0.f;
+	uint64_t time_sum = 0;
+	int n = 0;
 
-						int ndist = orb_group_count(ORB_ID(distance_sensor));
+	for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
+		distance_sensor_s distance_sensor;
 
-						if (ndist > 1) {
-							PX4_INFO("%d - selected distance_sensor:%d (%d advertised)", _instance, i, ndist);
-						}
+		if (_distance_sensor_subs[i].copy(&distance_sensor)
+		    && (distance_sensor.timestamp > timestamp_stale)
+		    && (distance_sensor.orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING)) {
 
-						_distance_sensor_selected = i;
-						_last_range_sensor_update = distance_sensor.timestamp;
-						break;
-					}
+			if (distance_sensor.timestamp > newest.timestamp) {
+				newest = distance_sensor;
+			}
+
+			if ((distance_sensor.signal_quality != 0)
+			    && (distance_sensor.current_distance >= distance_sensor.min_distance)
+			    && (distance_sensor.current_distance <= distance_sensor.max_distance)) {
+
+				sum += distance_sensor.current_distance;
+				time_sum += distance_sensor.timestamp;
+				n++;
+
+				if (distance_sensor.timestamp > good.timestamp) {
+					good = distance_sensor;
 				}
 			}
 		}
 	}
 
-	if (_distance_sensor_selected >= 0 && _distance_sensor_subs[_distance_sensor_selected].update(&distance_sensor)) {
-		// EKF range sample
-		if (distance_sensor.orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING) {
-			estimator::sensor::rangeSample range_sample {
-				.time_us = distance_sensor.timestamp,
-				.rng = distance_sensor.current_distance,
-				.quality = distance_sensor.signal_quality,
-			};
-			_ekf.setRangeData(range_sample);
-
-			// Save sensor limits reported by the rangefinder
-			_ekf.set_rangefinder_limits(distance_sensor.min_distance, distance_sensor.max_distance);
-
-			_last_range_sensor_update = ekf2_timestamps.timestamp;
-		}
-
-		ekf2_timestamps.distance_sensor_timestamp_rel = (int16_t)((int64_t)distance_sensor.timestamp / 100 -
-				(int64_t)ekf2_timestamps.timestamp / 100);
+	if (newest.timestamp == 0) {
+		return;
 	}
 
-	if (_last_range_sensor_update < ekf2_timestamps.timestamp - 1_s) {
-		// force reselection after timeout
-		_distance_sensor_selected = -1;
-	}
+	// with no reading in range the newest sample goes through unchanged and the filter rejects it
+	const distance_sensor_s &used = (n > 0) ? good : newest;
+
+	estimator::sensor::rangeSample range_sample {
+		.time_us = (n > 0) ? time_sum / n : used.timestamp,
+		.rng = (n > 0) ? sum / n : used.current_distance,
+		.quality = used.signal_quality,
+	};
+	_ekf.setRangeData(range_sample);
+
+	// Save sensor limits reported by the rangefinder
+	_ekf.set_rangefinder_limits(used.min_distance, used.max_distance);
+
+	_last_range_sensor_update = ekf2_timestamps.timestamp;
+
+	ekf2_timestamps.distance_sensor_timestamp_rel = (int16_t)((int64_t)used.timestamp / 100 -
+			(int64_t)ekf2_timestamps.timestamp / 100);
 }
 #endif // CONFIG_EKF2_RANGE_FINDER
 
