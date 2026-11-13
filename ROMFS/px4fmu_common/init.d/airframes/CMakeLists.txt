@@ -49,6 +49,7 @@ if(CONFIG_MODULES_SIMULATION_PWM_OUT_SIM)
 		1101_rc_plane_sih.hil
 		1102_tailsitter_duo_sih.hil
 		1103_standard_vtol_sih.hil
+		1105_indro_x8_sih.hil
 	)
 	if(CONFIG_MODULES_ROVER_ACKERMANN)
 		px4_add_romfs_files(
@@ -120,6 +121,7 @@ if(CONFIG_MODULES_FW_RATE_CONTROL)
 
 		# [3000, 3999] Flying wing
 		3000_generic_wing
+		3040_indro_x8
 
 		# [17000, 17999] Autogyro
 		17002_TF-AutoG2

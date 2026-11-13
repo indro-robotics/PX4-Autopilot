@@ -1,0 +1,48 @@
+#!/bin/sh
+#
+# @name InDro Skywalker X8 SIH
+#
+# @type Simulation
+# @class Plane
+#
+# @maintainer Calvin Rubens <calvin.rubens@indrorobotics.com>
+#
+
+. ${R}etc/init.d/airframes/3040_indro_x8
+
+param set-default CBRK_SUPPLY_CHK 894281
+param set-default SYS_HITL 2
+
+# GEOMETRY
+# SIH reads output 0 as roll and 1 as pitch and has no elevon model: elevon mixing stays out of HITL.
+param set-default CA_SV_CS0_TRQ_P 0
+param set-default CA_SV_CS0_TRQ_R 1
+param set-default CA_SV_CS0_TYPE 15
+param set-default CA_SV_CS1_TRQ_P 1
+param set-default CA_SV_CS1_TRQ_R 0
+param set-default CA_SV_CS1_TYPE 3
+
+# HIL
+param set-default HIL_ACT_FUNC1 201
+param set-default HIL_ACT_FUNC2 202
+param set-default HIL_ACT_FUNC4 101
+
+# COMMS
+# Below 5000 B/s a MAVLink link carries no HIL streams, so the GR03 radio stays telemetry only.
+param set-default MAV_0_RATE 4800
+
+# LAUNCH
+# The simulated wing cannot be launched: SIH models only a ground contact force.
+param set-default FW_LAUN_DETCN_ON 0
+param set-default RWTO_TKOFF 1
+
+# SIH
+# Generic SIH wing (0.18 m2) at the X8 wing loading, so it flies at X8 airspeeds.
+param set-default SIH_IXX 0.0127
+param set-default SIH_IXZ 0.0015
+param set-default SIH_IYY 0.0456
+param set-default SIH_IZZ 0.0561
+param set-default SIH_KDV 0.05
+param set-default SIH_MASS 0.95
+param set-default SIH_T_MAX 6.0
+param set-default SIH_VEHICLE_TYPE 1
