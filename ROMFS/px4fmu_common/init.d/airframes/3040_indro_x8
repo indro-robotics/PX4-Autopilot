@@ -60,10 +60,10 @@ param set-default GF_MAX_VER_DIST 60
 param set-default NAV_DLL_ACT 2
 
 # NAV
-# Flight at 30 m; the fence sits at 60 m so a gust or a turn does not trip it.
+# Takeoff holds at 45 m and Return at 30 m; the fence sits at 60 m.
 # A landing abort climbs this far above the height it starts from.
-param set-default MIS_LND_ABRT_ALT 20
-param set-default MIS_TAKEOFF_ALT 30
+param set-default MIS_LND_ABRT_ALT 10
+param set-default MIS_TAKEOFF_ALT 45
 param set-default RTL_DESCEND_ALT 30
 param set-default RTL_RETURN_ALT 30
 
