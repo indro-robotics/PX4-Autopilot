@@ -38,11 +38,11 @@ param set-default RWTO_TKOFF 1
 
 # SIH
 # Generic SIH wing (0.18 m2) at the X8 wing loading, so it flies at X8 airspeeds.
-param set-default SIH_IXX 0.0127
-param set-default SIH_IXZ 0.0015
-param set-default SIH_IYY 0.0456
-param set-default SIH_IZZ 0.0561
+param set-default SIH_IXX 0.0136
+param set-default SIH_IXZ 0.0016
+param set-default SIH_IYY 0.0490
+param set-default SIH_IZZ 0.0602
 param set-default SIH_KDV 0.05
-param set-default SIH_MASS 0.95
-param set-default SIH_T_MAX 6.0
+param set-default SIH_MASS 1.02
+param set-default SIH_T_MAX 6.44
 param set-default SIH_VEHICLE_TYPE 1
