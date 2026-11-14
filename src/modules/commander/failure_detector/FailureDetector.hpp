@@ -43,6 +43,7 @@
 #pragma once
 
 #include "FailureInjector.hpp"
+#include "ThrustLoss.hpp"
 
 #include <lib/hysteresis/hysteresis.h>
 #include <lib/mathlib/mathlib.h>
@@ -55,10 +56,12 @@
 #include <uORB/Publication.hpp>
 #include <uORB/topics/actuator_motors.h>
 #include <uORB/topics/sensor_selection.h>
+#include <uORB/topics/tecs_status.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_imu_status.h>
+#include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/pwm_input.h>
 
@@ -97,6 +100,7 @@ private:
 	void updateEscsStatus(const vehicle_status_s &vehicle_status, const esc_status_s &esc_status);
 	void updateMotorStatus(const vehicle_status_s &vehicle_status, const esc_status_s &esc_status);
 	void updateImbalancedPropStatus();
+	void updateThrustLoss(const vehicle_status_s &vehicle_status);
 
 	failure_detector_status_u _status{};
 
@@ -116,6 +120,10 @@ private:
 	uint8_t _motor_failure_esc_under_current_mask{};  // ESC drawing too little current -> failure
 	bool _motor_failure_esc_has_current[actuator_motors_s::NUM_CONTROLS] {false}; // true if some ESC had non-zero current (some don't support it)
 	hrt_abstime _motor_failure_undercurrent_start_time[actuator_motors_s::NUM_CONTROLS] {};
+	bool _esc_motor_failure{false};
+
+	ThrustLoss _thrust_loss{};
+	bool _landed{true};
 
 	uORB::Subscription _vehicle_attitude_sub{ORB_ID(vehicle_attitude)};
 	uORB::Subscription _esc_status_sub{ORB_ID(esc_status)}; // TODO: multi-instance
@@ -123,6 +131,8 @@ private:
 	uORB::Subscription _sensor_selection_sub{ORB_ID(sensor_selection)};
 	uORB::Subscription _vehicle_imu_status_sub{ORB_ID(vehicle_imu_status)};
 	uORB::Subscription _actuator_motors_sub{ORB_ID(actuator_motors)};
+	uORB::Subscription _tecs_status_sub{ORB_ID(tecs_status)};
+	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 
 	FailureInjector _failure_injector;
 
@@ -140,6 +150,10 @@ private:
 		(ParamBool<px4::params::FD_ACT_EN>) _param_fd_actuator_en,
 		(ParamFloat<px4::params::FD_ACT_MOT_THR>) _param_fd_motor_throttle_thres,
 		(ParamFloat<px4::params::FD_ACT_MOT_C2T>) _param_fd_motor_current2throttle_thres,
-		(ParamInt<px4::params::FD_ACT_MOT_TOUT>) _param_fd_motor_time_thres
+		(ParamInt<px4::params::FD_ACT_MOT_TOUT>) _param_fd_motor_time_thres,
+
+		(ParamFloat<px4::params::FD_FW_TL_TIME>) _param_fd_fw_tl_time,
+		(ParamFloat<px4::params::FD_FW_TL_THR>) _param_fd_fw_tl_thr,
+		(ParamFloat<px4::params::FD_FW_TL_RATE>) _param_fd_fw_tl_rate
 	)
 };

@@ -212,3 +212,49 @@ PARAM_DEFINE_FLOAT(FD_ACT_MOT_C2T, 2.0f);
  * @increment 100
  */
 PARAM_DEFINE_INT32(FD_ACT_MOT_TOUT, 100);
+
+/**
+ * Fixed-wing thrust loss time
+ *
+ * Time the thrust loss condition holds before the motor failure flag sets, and the time the
+ * energy gain holds before it clears. The condition is a throttle setpoint at or above FD_FW_TL_THR
+ * while the TECS specific energy rate is below FD_FW_TL_RATE.
+ * Set to 0 to disable the check.
+ *
+ * @unit s
+ * @min 0
+ * @max 10
+ * @decimal 1
+ * @increment 0.1
+ * @group Failure Detector
+ */
+PARAM_DEFINE_FLOAT(FD_FW_TL_TIME, 0.f);
+
+/**
+ * Fixed-wing thrust loss throttle threshold
+ *
+ * Throttle setpoint at or above which the motor is expected to add energy.
+ *
+ * @unit norm
+ * @min 0.0
+ * @max 1.0
+ * @decimal 2
+ * @increment 0.01
+ * @group Failure Detector
+ */
+PARAM_DEFINE_FLOAT(FD_FW_TL_THR, 0.7f);
+
+/**
+ * Fixed-wing thrust loss energy rate threshold
+ *
+ * Specific energy rate, total energy rate over g, below which thrust is lost.
+ * The flag clears once the rate stays above its negative.
+ *
+ * @unit m/s
+ * @min -5.0
+ * @max 0.0
+ * @decimal 2
+ * @increment 0.05
+ * @group Failure Detector
+ */
+PARAM_DEFINE_FLOAT(FD_FW_TL_RATE, -0.8f);

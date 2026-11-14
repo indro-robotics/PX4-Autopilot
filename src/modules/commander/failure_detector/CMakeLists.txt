@@ -35,3 +35,5 @@ px4_add_library(failure_detector
 	FailureDetector.cpp
 	FailureInjector.cpp
 )
+
+px4_add_unit_gtest(SRC FailureDetectorThrustTest.cpp)

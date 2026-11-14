@@ -2231,6 +2231,24 @@ FixedWingModeManager::Run()
 			}
 		}
 
+		if (_vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) {
+			const float height = _local_pos.dist_bottom_valid ? _local_pos.dist_bottom : _current_altitude - _reference_altitude;
+			const bool landing = _control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT
+					     || _control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_CIRCULAR;
+
+			if (height < _param_fw_tl_lvl_alt.get() && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT) {
+				_ctrl_configuration_handler.setLateralAccelMax(0.f);
+			}
+
+			if (height < 2.f * _param_fw_lnd_flalt.get() && !landing) {
+				_ctrl_configuration_handler.setPitchMin(radians(_param_fw_lnd_fl_pmin.get()));
+			}
+
+			if (_landed) {
+				_ctrl_configuration_handler.setThrottleMax(_param_fw_thr_idle.get());
+			}
+		}
+
 		if (_control_mode_current != FW_POSCTRL_MODE_OTHER) {
 			_ctrl_configuration_handler.update(now);
 		}

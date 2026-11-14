@@ -621,3 +621,18 @@ PARAM_DEFINE_FLOAT(FW_FLAPS_LND_SCL, 1.0f);
  * @group FW Auto Landing
  */
 PARAM_DEFINE_FLOAT(FW_SPOILERS_LND, 0.f);
+
+/**
+ * Thrust loss wings-level height
+ *
+ * Height above ground below which the aircraft flies wings level once the motor failure flag is set,
+ * except on a straight landing.
+ *
+ * @unit m
+ * @min 0.0
+ * @max 100.0
+ * @decimal 1
+ * @increment 1.0
+ * @group FW General
+ */
+PARAM_DEFINE_FLOAT(FW_TL_LVL_ALT, 20.f);
