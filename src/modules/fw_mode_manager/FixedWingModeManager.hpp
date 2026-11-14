@@ -251,6 +251,7 @@ private:
 	float _current_altitude{0.f};
 
 	float _yaw{0.0f};
+	float _pitch{0.0f};
 	float _yawrate{0.0f};
 
 	float _body_acceleration_x{0.f};
@@ -331,6 +332,8 @@ private:
 	// [m] AMSL altitude when the straight approach started
 	float _landing_start_altitude{0.0f};
 
+	FW_POSCTRL_MODE _landing_mode_last{FW_POSCTRL_MODE_OTHER};
+
 	uint8_t _landing_abort_status{position_controller_landing_status_s::NOT_ABORTED};
 
 	// organize flare states XXX: need to split into a separate class at some point!
@@ -339,7 +342,12 @@ private:
 		hrt_abstime start_time{0}; // [us]
 		float initial_height_rate_setpoint{0.0f}; // [m/s]
 		float initial_height{0.0f}; // [m] above the terrain estimate
+		float pitch_entry{0.0f}; // [rad]
+		float pitch_integ{0.0f}; // [rad]
+		bool range_schedule{false};
 	} _flare_states;
+
+	float flarePitch(float height_rate_setpoint, float pitch_min, float pitch_max, const Vector2f &ground_speed, float dt);
 
 	// [m] last terrain estimate which was valid
 	float _last_valid_terrain_alt_estimate{0.0f};
@@ -872,6 +880,11 @@ private:
 		(ParamBool<px4::params::RWTO_NUDGE>) _param_rwto_nudge,
 		(ParamFloat<px4::params::FW_LND_FL_TIME>) _param_fw_lnd_fl_time,
 		(ParamFloat<px4::params::FW_LND_FL_SINK>) _param_fw_lnd_fl_sink,
+		(ParamFloat<px4::params::FW_LND_FL_KP>) _param_fw_lnd_fl_kp,
+		(ParamFloat<px4::params::FW_LND_FL_KI>) _param_fw_lnd_fl_ki,
+		(ParamFloat<px4::params::FW_LND_FL_TTD>) _param_fw_lnd_fl_ttd,
+		(ParamFloat<px4::params::FW_LND_SPDWT>) _param_fw_lnd_spdwt,
+		(ParamFloat<px4::params::FW_LND_WIND_SC>) _param_fw_lnd_wind_sc,
 		(ParamFloat<px4::params::FW_LND_TD_TIME>) _param_fw_lnd_td_time,
 		(ParamFloat<px4::params::FW_LND_TD_OFF>) _param_fw_lnd_td_off,
 		(ParamInt<px4::params::FW_LND_NUDGE>) _param_fw_lnd_nudge,

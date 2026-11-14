@@ -518,6 +518,83 @@ PARAM_DEFINE_FLOAT(FW_LND_TD_TIME, -1.0f);
 PARAM_DEFINE_FLOAT(FW_LND_FL_SINK, 0.25f);
 
 /**
+ * Landing flare pitch gain
+ *
+ * Flare pitch setpoint per m/s of height rate error, in deg per m/s. On range data the height rate
+ * setpoint runs from the entry sink at the flare height to FW_LND_FL_SINK on the ground.
+ *
+ * Set to 0 to leave the flare pitch to TECS.
+ *
+ * @unit deg
+ * @min 0.0
+ * @max 20.0
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Auto Landing
+ */
+PARAM_DEFINE_FLOAT(FW_LND_FL_KP, 0.0f);
+
+/**
+ * Landing flare pitch integral gain
+ *
+ * Flare pitch rate per m/s of height rate error, in deg/s per m/s. Acts only with FW_LND_FL_KP above 0.
+ *
+ * @unit deg/s
+ * @min 0.0
+ * @max 10.0
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Auto Landing
+ */
+PARAM_DEFINE_FLOAT(FW_LND_FL_KI, 0.0f);
+
+/**
+ * Landing flare time to touchdown
+ *
+ * The flare starts at this time to ground at the current sink rate, or at FW_LND_FLALT if higher.
+ *
+ * Set to 0 to use FW_LND_FL_TIME.
+ *
+ * @unit s
+ * @min 0.0
+ * @max 5.0
+ * @decimal 1
+ * @increment 0.1
+ * @group FW Auto Landing
+ */
+PARAM_DEFINE_FLOAT(FW_LND_FL_TTD, 0.0f);
+
+/**
+ * Landing speed weight
+ *
+ * TECS speed weight on the landing orbit and the landing approach, in place of FW_T_SPDWEIGHT.
+ *
+ * Set to -1 to use FW_T_SPDWEIGHT.
+ *
+ * @min -1.0
+ * @max 2.0
+ * @decimal 1
+ * @increment 0.1
+ * @group FW Auto Landing
+ */
+PARAM_DEFINE_FLOAT(FW_LND_SPDWT, -1.0f);
+
+/**
+ * Landing airspeed headwind scale
+ *
+ * Fraction of the headwind on the straight approach added to the landing airspeed, capped at FW_AIRSPD_TRIM.
+ *
+ * Set to 0 to disable.
+ *
+ * @min 0.0
+ * @max 1.0
+ * @decimal 2
+ * @increment 0.05
+ * @group FW Auto Landing
+ */
+PARAM_DEFINE_FLOAT(FW_LND_WIND_SC, 0.0f);
+
+/**
  * Maximum lateral position offset for the touchdown point
  *
  * @unit m
