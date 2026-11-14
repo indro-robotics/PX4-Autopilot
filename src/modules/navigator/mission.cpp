@@ -511,14 +511,15 @@ Mission::writeLandingPattern(mission_item_s items[3], float heading, bool ready)
 		const dm_item_t id = static_cast<dm_item_t>(_mission.mission_dataman_id);
 		mission_item_s land, approach;
 
+		// The companion owns the landing direction, so a pattern on the reversed launch line fits too.
 		const bool fits = _mission.land_index > 0
 				  && _dataman_client.readSync(id, _mission.land_index, reinterpret_cast<uint8_t *>(&land), sizeof(land), 500_ms)
 				  && _dataman_client.readSync(id, _mission.land_index - 1, reinterpret_cast<uint8_t *>(&approach), sizeof(approach),
 						  500_ms)
 				  && land.origin != ORIGIN_ONBOARD && item_contains_position(approach)
 				  && get_distance_to_next_waypoint(home.lat, home.lon, land.lat, land.lon) <= 200.f
-				  && fabsf(matrix::wrap_pi(get_bearing_to_next_waypoint(approach.lat, approach.lon, land.lat, land.lon) - heading))
-				  <= math::radians(60.f)
+				  && fabsf(matrix::wrap_pi(2.f * (get_bearing_to_next_waypoint(approach.lat, approach.lon, land.lat, land.lon) - heading)))
+				  <= math::radians(120.f)
 				  && (result.mission_id != _mission.mission_id || result.valid);
 
 		if (fits) {

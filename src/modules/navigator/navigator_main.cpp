@@ -241,6 +241,7 @@ void Navigator::run()
 
 		if (_vstatus.arming_state != vehicle_status_s::ARMING_STATE_ARMED) {
 			_lp_armed = false;
+			_hold_keep = false;
 
 		} else if (!_lp_armed) {
 			_lp_armed = true;
@@ -789,6 +790,8 @@ void Navigator::run()
 
 		if (_vstatus.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER) {
 			_hold_entered = false;
+			// A kept Hold carries into the Land after it, whose entry would re-test the orbit ring on one sample.
+			_hold_keep = _hold_keep && _vstatus.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LAND;
 		}
 
 		// A kept object would fly a new, cleared or rejected mission under Land or Hold.
@@ -815,7 +818,8 @@ void Navigator::run()
 			}
 
 			// A Hold orbit at final height banks a wingtip into the ground.
-			navigation_mode_new = (_hold_keep && _vstatus.failsafe) ? _navigation_mode : &_loiter;
+			_hold_keep = _hold_keep && _vstatus.failsafe;
+			navigation_mode_new = _hold_keep ? _navigation_mode : &_loiter;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_RTL:
@@ -856,7 +860,7 @@ void Navigator::run()
 					_land_intention = _vstatus.nav_state_user_intention;
 					_land_failsafe = _vstatus.failsafe;
 					_land_mission_id = _mission_result.mission_id;
-					_land_via_mission = landingPatternFlying()
+					_land_via_mission = _hold_keep || landingPatternFlying()
 							    || (landing_pattern_enabled() && !_vstatus.failsafe
 								&& _land_intention == vehicle_status_s::NAVIGATION_STATE_AUTO_LAND && _rtl.flysMissionLanding());
 				}
@@ -868,7 +872,7 @@ void Navigator::run()
 				if (!_land_via_mission) {
 					navigation_mode_new = &_land;
 
-				} else if (_navigation_mode == &_mission && (!land_entry || _mission.isLanding())) {
+				} else if (_navigation_mode == &_mission && (!land_entry || _hold_keep || _mission.isLanding())) {
 					navigation_mode_new = &_mission;
 
 				} else {
