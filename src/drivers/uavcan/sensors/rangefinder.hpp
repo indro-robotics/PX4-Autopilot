@@ -69,5 +69,7 @@ private:
 
 	float _range_min_m{0.0f};
 	float _range_max_m{0.0f};
+	float _radar_min_m{0.0f};
+	float _radar_max_m{0.0f};
 
 };
