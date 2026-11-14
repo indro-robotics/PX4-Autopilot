@@ -1133,7 +1133,14 @@ float Navigator::get_altitude_acceptance_radius()
 		const position_setpoint_s &curr_sp = get_position_setpoint_triplet()->current;
 		const position_setpoint_s &next_sp = get_position_setpoint_triplet()->next;
 
-		if ((PX4_ISFINITE(curr_sp.alt_acceptance_radius) && curr_sp.alt_acceptance_radius > FLT_EPSILON)) {
+		_terrain_follow_status_sub.update();
+		const terrain_follow_status_s &tf = _terrain_follow_status_sub.get();
+
+		if (hrt_elapsed_time(&tf.timestamp) < 1_s && tf.state >= terrain_follow_status_s::STATE_FOLLOW
+		    && tf.state <= terrain_follow_status_s::STATE_RANGE_LOST) {
+			return FLT_MAX;
+
+		} else if ((PX4_ISFINITE(curr_sp.alt_acceptance_radius) && curr_sp.alt_acceptance_radius > FLT_EPSILON)) {
 			return curr_sp.alt_acceptance_radius;
 
 		} else if (!force_vtol() && next_sp.type == position_setpoint_s::SETPOINT_TYPE_LAND && next_sp.valid) {

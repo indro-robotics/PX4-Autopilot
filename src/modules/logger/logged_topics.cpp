@@ -127,6 +127,7 @@ void LoggedTopics::add_default_topics()
 	add_topic("system_power", 500);
 	add_optional_topic("takeoff_status", 1000);
 	add_optional_topic("tecs_status", 200);
+	add_optional_topic("terrain_follow_status", 100);
 	add_optional_topic("tiltrotor_extra_controls", 100);
 	add_topic("trajectory_setpoint", 200);
 	add_topic("transponder_report");
@@ -193,7 +194,7 @@ void LoggedTopics::add_default_topics()
 	// log all raw sensors at minimal rate (at least 1 Hz)
 	add_topic_multi("battery_status", 200, 3);
 	add_topic_multi("differential_pressure", 1000, 2);
-	add_topic_multi("distance_sensor", 100, 2);
+	add_topic_multi("distance_sensor", 100, 4);
 	add_optional_topic_multi("sensor_accel", 1000, 4);
 	add_topic_multi("sensor_baro", 1000, 4);
 	add_topic_multi("sensor_gps", 1000, 2);

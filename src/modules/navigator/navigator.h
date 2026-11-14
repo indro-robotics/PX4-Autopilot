@@ -78,6 +78,7 @@
 #include <uORB/topics/position_controller_landing_status.h>
 #include <uORB/topics/position_controller_status.h>
 #include <uORB/topics/position_setpoint_triplet.h>
+#include <uORB/topics/terrain_follow_status.h>
 #include <uORB/topics/transponder_report.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_command_ack.h>
@@ -309,6 +310,7 @@ private:
 	int _vehicle_status_sub{-1};
 
 	uORB::SubscriptionData<position_controller_status_s>	_position_controller_status_sub{ORB_ID(position_controller_status)};
+	uORB::SubscriptionData<terrain_follow_status_s> _terrain_follow_status_sub{ORB_ID(terrain_follow_status)};
 
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
