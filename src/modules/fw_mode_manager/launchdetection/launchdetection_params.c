@@ -79,3 +79,17 @@ PARAM_DEFINE_FLOAT(FW_LAUN_AC_T, 0.05f);
  * @group FW Auto Takeoff
  */
 PARAM_DEFINE_FLOAT(FW_LAUN_MOT_DEL, 0.0f);
+
+/**
+ * Minimum launch speed
+ *
+ * The motor starts after FW_LAUN_MOT_DEL only when the inertial speed since the launch detection reached this value. A launch whose acceleration ends below it keeps the throttle at FW_THR_IDLE, levels the wings and holds FW_LND_FL_PMAX pitch until disarm; one under 2 m/s re-arms the launch detection. 0 disables the check. Needs FW_LAUN_MOT_DEL above 0.
+ *
+ * @unit m/s
+ * @min 0.0
+ * @max 20.0
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_LAUN_SPD_MIN, 0.0f);

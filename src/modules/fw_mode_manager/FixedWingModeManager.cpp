@@ -1164,7 +1164,10 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 				/* Perform launch detection */
 
 				/* Detect launch using body X (forward) acceleration */
-				_launchDetector.update(control_interval, _body_acceleration_x);
+				// 3D: on the rail the horizontal speed reads cos(rail angle) low
+				const float launch_speed = (_local_pos.v_xy_valid && _local_pos.v_z_valid) ?
+							   Vector3f(_local_pos.vx, _local_pos.vy, _local_pos.vz).norm() : NAN;
+				_launchDetector.update(control_interval, _body_acceleration_x, launch_speed);
 			}
 
 		} else	{
@@ -1198,7 +1201,8 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 		}
 
 		/* Set control values depending on the detection state */
-		if (_launchDetector.getLaunchDetected() > launch_detection_status_s::STATE_WAITING_FOR_LAUNCH) {
+		if (_launchDetector.getLaunchDetected() > launch_detection_status_s::STATE_WAITING_FOR_LAUNCH
+		    && !_launchDetector.aborted()) {
 			/* Launch has been detected, hence we have to control the plane. */
 
 			const DirectionalGuidanceOutput sp = navigateLine(launch_local_position, takeoff_bearing, local_2D_position,
@@ -1244,7 +1248,9 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 
 			fixed_wing_longitudinal_setpoint_s long_control_sp{empty_longitudinal_control_setpoint};
 			long_control_sp.timestamp = now;
-			long_control_sp.pitch_direct = radians(_takeoff_pitch_min.get());
+			// highest pitch without a wingtip-first contact: least sink in the belly landing ahead of the rail
+			long_control_sp.pitch_direct = radians(_launchDetector.aborted() ? _param_fw_lnd_fl_pmax.get() :
+							       _takeoff_pitch_min.get());
 			long_control_sp.throttle_direct = _param_fw_thr_idle.get();
 			_longitudinal_ctrl_sp_pub.publish(long_control_sp);
 		}
@@ -1335,7 +1341,7 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 			if (_control_mode.flag_armed) {
 				/* Detect launch using body X (forward) acceleration */
-				_launchDetector.update(control_interval, _body_acceleration_x);
+				_launchDetector.update(control_interval, _body_acceleration_x, NAN);
 			}
 
 		} else	{

@@ -50,6 +50,9 @@ namespace launchdetection
 // Info delay threshold (to publish info every kInfoDelay seconds)
 static constexpr float kInfoDelay = 4.f;
 
+// [m/s] a detection that never reached this speed was a knock on the rail, not a launch
+static constexpr float kKnockSpeed = 2.f;
+
 class __EXPORT LaunchDetector : public ModuleParams
 {
 public:
@@ -69,8 +72,14 @@ public:
 	 *
 	 * @param dt Time step [us]
 	 * @param accel_x Measured acceleration in body x [m/s/s]
+	 * @param speed Inertial speed [m/s], NAN when invalid
 	 */
-	void update(const float dt, const float accel_x);
+	void update(const float dt, const float accel_x, const float speed);
+
+	/**
+	 * @return true after a launch too slow for FW_LAUN_SPD_MIN, until reset()
+	 */
+	bool aborted() const { return aborted_; }
 
 	/**
 	 * @brief Get the Launch Detected state
@@ -105,10 +114,15 @@ private:
 	 */
 	uint state_{launch_detection_status_s::STATE_WAITING_FOR_LAUNCH};
 
+	float speed_max_{0.f};
+
+	bool aborted_{false};
+
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::FW_LAUN_AC_THLD>) param_fw_laun_ac_thld_,
 		(ParamFloat<px4::params::FW_LAUN_AC_T>) param_fw_laun_ac_t_,
-		(ParamFloat<px4::params::FW_LAUN_MOT_DEL>) param_fw_laun_mot_del_
+		(ParamFloat<px4::params::FW_LAUN_MOT_DEL>) param_fw_laun_mot_del_,
+		(ParamFloat<px4::params::FW_LAUN_SPD_MIN>) param_fw_laun_spd_min_
 	)
 };
 
