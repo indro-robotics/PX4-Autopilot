@@ -40,8 +40,18 @@
 
 #include <px4_platform_common/getopt.h>
 
+#include <algorithm>
 #include <iostream>
 #include <string>
+
+static constexpr struct {
+	const char *link_sensor;
+	uint8_t type;
+} range_sensors[3] {
+	{"lidar_sensor_link/sensor/lidar", distance_sensor_s::MAV_DISTANCE_SENSOR_LASER},
+	{"lidar2_sensor_link/sensor/lidar2", distance_sensor_s::MAV_DISTANCE_SENSOR_LASER},
+	{"radar_sensor_link/sensor/radar", distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR},
+};
 
 GZBridge::GZBridge(const std::string &world, const std::string &model_name) :
 	ModuleParams(nullptr),
@@ -265,12 +275,20 @@ bool GZBridge::subscribeLaserScan(bool required)
 
 bool GZBridge::subscribeDistanceSensor(bool required)
 {
-	std::string lidar_sensor = "/world/" + _world_name + "/model/" + _model_name +
-				   "/link/lidar_sensor_link/sensor/lidar/scan";
+	// A sensor the model lacks never publishes, so its distance_sensor instance never appears.
+	for (uint8_t i = 0; i < 3; i++) {
+		std::string topic = "/world/" + _world_name + "/model/" + _model_name + "/link/" + range_sensors[i].link_sensor + "/scan";
+		std::function<void(const gz::msgs::LaserScan &)> callback = [this, i](const gz::msgs::LaserScan & msg) {
+			laserScantoLidarSensorCallback(msg, i);
+		};
 
-	if (!_node.Subscribe(lidar_sensor, &GZBridge::laserScantoLidarSensorCallback, this)) {
-		PX4_WARN("failed to subscribe to %s", lidar_sensor.c_str());
-		return required ? false : true;
+		if (!_node.Subscribe(topic, callback)) {
+			PX4_WARN("failed to subscribe to %s", topic.c_str());
+
+			if (required) {
+				return false;
+			}
+		}
 	}
 
 	return true;
@@ -799,23 +817,24 @@ void GZBridge::navSatCallback(const gz::msgs::NavSat &msg)
 	_sensor_gps_pub.publish(sensor_gps);
 }
 
-void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg)
+void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg, uint8_t index)
 {
 	device::Device::DeviceId id{};
 	id.devid_s.bus_type = device::Device::DeviceBusType::DeviceBusType_SIMULATION;
 	id.devid_s.devtype = DRV_DIST_DEVTYPE_SIM;
 	id.devid_s.bus = 1;
-	id.devid_s.address = 1;
+	id.devid_s.address = index + 1;
 
 	distance_sensor_s report{};
 	report.timestamp = hrt_absolute_time();
 	report.device_id = id.devid;
 	report.min_distance = static_cast<float>(msg.range_min());
 	report.max_distance = static_cast<float>(msg.range_max());
-	report.current_distance = static_cast<float>(msg.ranges()[0]);
+	// A radar altimeter reports its nearest return across the beam.
+	report.current_distance = static_cast<float>(*std::min_element(msg.ranges().begin(), msg.ranges().end()));
 	report.variance = 0.0f;
 	report.signal_quality = -1;
-	report.type = distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
+	report.type = range_sensors[index].type;
 
 	gz::msgs::Quaternion pose_orientation = msg.world_pose().orientation();
 	gz::math::Quaterniond q_sensor = gz::math::Quaterniond(
@@ -847,7 +866,7 @@ void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg)
 		report.q[3] = q_sensor.Z();
 	}
 
-	_distance_sensor_pub.publish(report);
+	_distance_sensor_pub[index].publish(report);
 }
 
 void GZBridge::laserScanCallback(const gz::msgs::LaserScan &msg)
