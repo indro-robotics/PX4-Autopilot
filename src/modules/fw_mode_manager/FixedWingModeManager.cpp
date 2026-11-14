@@ -1424,16 +1424,8 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 	const float glide_slope_reference_alt = (_param_fw_lnd_useter.get() ==
 						TerrainEstimateUseOnLanding::kFollowTerrainRelativeLandingGlideSlope) ? terrain_alt : pos_sp_curr.alt;
 
-	float altitude_setpoint;
-
-	if (_current_altitude > glide_slope_reference_alt + glide_slope_rel_alt) {
-		// descend to the glide slope
-		altitude_setpoint = glide_slope_reference_alt + glide_slope_rel_alt;
-
-	} else {
-		// continue horizontally
-		altitude_setpoint = _current_altitude;
-	}
+	// a dip under the slope is climbed back; a final entered under the slope holds its start height until it meets it
+	const float altitude_setpoint = math::min(glide_slope_reference_alt + glide_slope_rel_alt, _landing_start_altitude);
 
 	// flare at the maximum of the altitude determined by the time before touchdown and a minimum flare altitude
 	const float flare_rel_alt = math::max(_param_fw_lnd_fl_time.get() * _local_pos.vz, _param_fw_lnd_flalt.get());
@@ -1448,6 +1440,7 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 			_flare_states.flaring = true;
 			_flare_states.start_time = now;
 			_flare_states.initial_height_rate_setpoint = -_local_pos.vz;
+			_flare_states.initial_height = math::max(flare_rel_alt, FLT_EPSILON);
 			events::send(events::ID("fixedwing_position_control_landing_flaring"), events::Log::Info,
 				     "Landing, flaring");
 		}
@@ -1482,8 +1475,12 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 				_param_fw_lnd_fl_time.get()) / (_param_fw_lnd_fl_time.get()), 0.f, 1.f);
 		const float flare_hieght_rate_interpolator_sqrt = sqrt(flare_hieght_rate_interpolator);
 
-		const float height_rate_setpoint = flare_hieght_rate_interpolator_sqrt * (-_param_fw_lnd_fl_sink.get()) +
-						   (1.0f - flare_hieght_rate_interpolator_sqrt) * _flare_states.initial_height_rate_setpoint;
+		// on range data the sink follows the remaining height, so a balloon or a dip is flown out
+		const float flare_sink_ramp = _local_pos.dist_bottom_valid ? 1.f - math::constrain((_current_altitude - terrain_alt) /
+					      _flare_states.initial_height, 0.f, 1.f) : flare_hieght_rate_interpolator_sqrt;
+
+		const float height_rate_setpoint = flare_sink_ramp * (-_param_fw_lnd_fl_sink.get()) +
+						   (1.0f - flare_sink_ramp) * _flare_states.initial_height_rate_setpoint;
 
 		float pitch_min_rad = flare_ramp_interpolator_sqrt * radians(_param_fw_lnd_fl_pmin.get()) +
 				      (1.0f - flare_ramp_interpolator_sqrt) * radians(_param_fw_p_lim_min.get());
@@ -1525,6 +1522,8 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 		_ctrl_configuration_handler.setThrottleMax(throttle_max);
 		_ctrl_configuration_handler.setThrottleMin(_param_fw_thr_idle.get());
 		_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
+		// idle throttle cannot hold airspeed, so pitch tracks the flare height rate alone
+		_ctrl_configuration_handler.setSpeedWeight(0.f);
 
 	} else {
 
@@ -1632,6 +1631,7 @@ FixedWingModeManager::control_auto_landing_circular(const hrt_abstime &now, cons
 			_flare_states.flaring = true;
 			_flare_states.start_time = now;
 			_flare_states.initial_height_rate_setpoint = -_local_pos.vz;
+			_flare_states.initial_height = math::max(flare_rel_alt, FLT_EPSILON);
 			events::send(events::ID("fixedwing_position_control_landing_circle_flaring"), events::Log::Info,
 				     "Landing, flaring");
 		}
@@ -1655,8 +1655,12 @@ FixedWingModeManager::control_auto_landing_circular(const hrt_abstime &now, cons
 
 		const float flare_ramp_interpolator_sqrt = sqrtf(flare_ramp_interpolator);
 
-		const float height_rate_setpoint = flare_ramp_interpolator_sqrt * (-_param_fw_lnd_fl_sink.get()) +
-						   (1.0f - flare_ramp_interpolator_sqrt) * _flare_states.initial_height_rate_setpoint;
+		// on range data the sink follows the remaining height, so a balloon or a dip is flown out
+		const float flare_sink_ramp = _local_pos.dist_bottom_valid ? 1.f - math::constrain((_current_altitude - terrain_alt) /
+					      _flare_states.initial_height, 0.f, 1.f) : flare_ramp_interpolator_sqrt;
+
+		const float height_rate_setpoint = flare_sink_ramp * (-_param_fw_lnd_fl_sink.get()) +
+						   (1.0f - flare_sink_ramp) * _flare_states.initial_height_rate_setpoint;
 
 		float pitch_min_rad = flare_ramp_interpolator_sqrt * radians(_param_fw_lnd_fl_pmin.get()) +
 				      (1.0f - flare_ramp_interpolator_sqrt) * radians(_param_fw_p_lim_min.get());
@@ -1696,6 +1700,8 @@ FixedWingModeManager::control_auto_landing_circular(const hrt_abstime &now, cons
 		_ctrl_configuration_handler.setThrottleMax(throttle_max);
 		_ctrl_configuration_handler.setThrottleMin(_param_fw_thr_idle.get());
 		_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
+		// idle throttle cannot hold airspeed, so pitch tracks the flare height rate alone
+		_ctrl_configuration_handler.setSpeedWeight(0.f);
 
 	} else {
 
@@ -2344,6 +2350,7 @@ FixedWingModeManager::initializeAutoLanding(const hrt_abstime &now, const positi
 		}
 
 		_landing_approach_entrance_rel_alt = math::max(height_above_land_point, FLT_EPSILON);
+		_landing_start_altitude = _current_altitude;
 
 		const Vector2f landing_approach_vector = local_land_point - local_approach_entrance;
 		float landing_approach_distance = landing_approach_vector.norm();

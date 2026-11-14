@@ -51,6 +51,12 @@ Land::on_activation()
 {
 	/* set current mission item to Land */
 	set_land_item(&_mission_item);
+
+	// The LAND altitude is the fixed-wing terrain fallback: 0 m AMSL means no flare and no bank limit without a range finder.
+	if (_navigator->landing_pattern_enabled() && _navigator->home_global_position_valid()) {
+		_mission_item.altitude = _navigator->get_home_position()->alt;
+	}
+
 	_navigator->get_mission_result()->finished = false;
 	_navigator->set_mission_result_updated();
 	reset_mission_item_reached();

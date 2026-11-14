@@ -328,6 +328,9 @@ private:
 	// [m] relative height above land point
 	float _landing_approach_entrance_rel_alt{0.0f};
 
+	// [m] AMSL altitude when the straight approach started
+	float _landing_start_altitude{0.0f};
+
 	uint8_t _landing_abort_status{position_controller_landing_status_s::NOT_ABORTED};
 
 	// organize flare states XXX: need to split into a separate class at some point!
@@ -335,6 +338,7 @@ private:
 		bool flaring{false};
 		hrt_abstime start_time{0}; // [us]
 		float initial_height_rate_setpoint{0.0f}; // [m/s]
+		float initial_height{0.0f}; // [m] above the terrain estimate
 	} _flare_states;
 
 	// [m] last terrain estimate which was valid

@@ -239,6 +239,21 @@ void Navigator::run()
 		_position_controller_status_sub.update();
 		_home_pos_sub.update(&_home_pos);
 
+		if (_vstatus.arming_state != vehicle_status_s::ARMING_STATE_ARMED) {
+			_lp_armed = false;
+
+		} else if (!_lp_armed) {
+			_lp_armed = true;
+
+			if (landing_pattern_enabled()) {
+				// A pattern written from a moving vehicle sits around an airborne home.
+				const bool ready = (_home_pos.timestamp >= _vstatus.armed_time || _home_pos.manual_home)
+						   && home_global_position_valid() && PX4_ISFINITE(_local_pos.heading) && _local_pos.v_xy_valid
+						   && _local_pos.vx * _local_pos.vx + _local_pos.vy * _local_pos.vy < 3.f * 3.f;
+				landingPatternWrite(_local_pos.heading, ready);
+			}
+		}
+
 		// Handle Vehicle commands
 		int vehicle_command_updates = 0;
 
@@ -768,6 +783,20 @@ void Navigator::run()
 		/* Do stuff according to navigation state set by commander */
 		NavigatorMode *navigation_mode_new{nullptr};
 
+		if (_vstatus.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_LAND) {
+			_land_intention = vehicle_status_s::NAVIGATION_STATE_MAX;
+		}
+
+		if (_vstatus.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER) {
+			_hold_entered = false;
+		}
+
+		// A kept object would fly a new, cleared or rejected mission under Land or Hold.
+		if (!_mission_result.valid || _mission_result.mission_id != _land_mission_id) {
+			_land_via_mission = false;
+			_hold_keep = false;
+		}
+
 		switch (_vstatus.nav_state) {
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION:
 			_pos_sp_triplet_published_invalid_once = false;
@@ -778,7 +807,15 @@ void Navigator::run()
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER:
 			_pos_sp_triplet_published_invalid_once = false;
-			navigation_mode_new = &_loiter;
+
+			if (!_hold_entered) {
+				_hold_entered = true;
+				_hold_keep = _vstatus.failsafe && landingPatternFlying();
+				_land_mission_id = _mission_result.mission_id;
+			}
+
+			// A Hold orbit at final height banks a wingtip into the ground.
+			navigation_mode_new = (_hold_keep && _vstatus.failsafe) ? _navigation_mode : &_loiter;
 			break;
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_RTL:
@@ -809,10 +846,37 @@ void Navigator::run()
 			break;
 #endif //CONFIG_MODE_NAVIGATOR_VTOL_TAKEOFF
 
-		case vehicle_status_s::NAVIGATION_STATE_AUTO_LAND:
-			_pos_sp_triplet_published_invalid_once = false;
-			navigation_mode_new = &_land;
-			break;
+		case vehicle_status_s::NAVIGATION_STATE_AUTO_LAND: {
+				_pos_sp_triplet_published_invalid_once = false;
+
+				const bool land_entry = _land_intention != _vstatus.nav_state_user_intention
+							|| _land_failsafe != _vstatus.failsafe;
+
+				if (land_entry) {
+					_land_intention = _vstatus.nav_state_user_intention;
+					_land_failsafe = _vstatus.failsafe;
+					_land_mission_id = _mission_result.mission_id;
+					_land_via_mission = landingPatternFlying()
+							    || (landing_pattern_enabled() && !_vstatus.failsafe
+								&& _land_intention == vehicle_status_s::NAVIGATION_STATE_AUTO_LAND && _rtl.flysMissionLanding());
+				}
+
+				// Return chooses its landing again on activation.
+				_land_via_mission = _land_via_mission && home_global_position_valid() && _local_pos.xy_global
+						    && (_navigation_mode != &_rtl || _rtl.flysMissionLanding());
+
+				if (!_land_via_mission) {
+					navigation_mode_new = &_land;
+
+				} else if (_navigation_mode == &_mission && (!land_entry || _mission.isLanding())) {
+					navigation_mode_new = &_mission;
+
+				} else {
+					navigation_mode_new = &_rtl;
+				}
+
+				break;
+			}
 
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_PRECLAND:
 			_pos_sp_triplet_published_invalid_once = false;
@@ -889,6 +953,14 @@ void Navigator::run()
 			if (_navigation_mode_array[i]) {
 				_navigation_mode_array[i]->run(_navigation_mode == _navigation_mode_array[i]);
 			}
+		}
+
+		if (_lp_mission_id != 0 && _mission_result.mission_id == _lp_mission_id) {
+			if (!_mission_result.valid) {
+				mavlink_log_critical(&_mavlink_log_pub, "Landing pattern failed mission check");
+			}
+
+			_lp_mission_id = 0;
 		}
 
 		/* if nothing is running, set position setpoint triplet invalid once */
@@ -1567,6 +1639,61 @@ Navigator::stop_capturing_images()
 		publish_vehicle_command(vehicle_command);
 
 		// _is_capturing_images is reset inside publish_vehicle_command.
+	}
+}
+
+void Navigator::landingPatternWrite(float heading, bool ready)
+{
+	mission_item_s items[3] {};
+	landingPatternItems(heading, items);
+	const uint32_t id = _mission.writeLandingPattern(items, heading, ready);
+
+	_lp_mission_id = 0;
+
+	if (id == Mission::LANDING_PATTERN_FAILED) {
+		mavlink_log_critical(&_mavlink_log_pub, "Landing pattern not written");
+
+	} else if (id != 0) {
+		_lp_mission_id = id;
+		mavlink_log_info(&_mavlink_log_pub, "Landing pattern written, course %d deg",
+				 ((int)roundf(math::degrees(heading)) + 360) % 360);
+	}
+}
+
+bool Navigator::landingPatternFlying()
+{
+	return landing_pattern_enabled()
+	       && ((_navigation_mode == &_mission && _mission.isLanding())
+		   || (_navigation_mode == &_rtl && _rtl.flysMissionLanding() && _rtl.isLanding()));
+}
+
+void Navigator::landingPatternItems(float heading, mission_item_s items[3])
+{
+	const float radius = _param_nav_loiter_rad.get();
+	double lat, lon;
+
+	waypoint_from_heading_and_distance(_home_pos.lat, _home_pos.lon, heading, _param_mis_lp_ahead.get(), &lat, &lon);
+	waypoint_from_heading_and_distance(lat, lon, heading + M_PI_2_F, _param_mis_lp_offset.get(), &items[2].lat,
+					   &items[2].lon);
+
+	// The tangent exit lies on the landing line, so the orbit centre sits one radius to the orbit side of it.
+	waypoint_from_heading_and_distance(items[2].lat, items[2].lon, heading + M_PI_F, _param_mis_lp_dist.get(), &lat, &lon);
+	waypoint_from_heading_and_distance(lat, lon, heading + (radius < 0.f ? -M_PI_2_F : M_PI_2_F), fabsf(radius),
+					   &items[1].lat, &items[1].lon);
+
+	items[0].nav_cmd = NAV_CMD_DO_LAND_START;
+	items[1].nav_cmd = NAV_CMD_LOITER_TO_ALT;
+	items[1].altitude = _param_mis_lp_alt.get();
+	items[1].loiter_radius = radius;
+	items[1].force_heading = true;
+	items[1].loiter_exit_xtrack = true;
+	items[2].nav_cmd = NAV_CMD_LAND;
+
+	for (int i = 0; i < 3; i++) {
+		items[i].frame = (i == 0) ? NAV_FRAME_MISSION : NAV_FRAME_GLOBAL_RELATIVE_ALT_INT;
+		items[i].altitude_is_relative = (i > 0);
+		items[i].autocontinue = true;
+		items[i].origin = ORIGIN_ONBOARD;
 	}
 }
 

@@ -67,6 +67,10 @@ public:
 	uint16_t get_land_start_index() const { return _mission.land_start_index; }
 	bool get_land_start_available() const { return hasMissionLandStart(); }
 
+	static constexpr uint32_t LANDING_PATTERN_FAILED{UINT32_MAX};
+
+	uint32_t writeLandingPattern(mission_item_s items[3], float heading, bool ready);
+
 
 private:
 

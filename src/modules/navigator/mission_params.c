@@ -162,3 +162,69 @@ PARAM_DEFINE_INT32(MIS_LND_ABRT_ALT, 30);
  * @group Mission
  */
 PARAM_DEFINE_FLOAT(MIS_COMMAND_TOUT, 0.f);
+
+/**
+ * Landing pattern written at arming
+ *
+ * On a fixed wing that is not a VTOL, arming replaces an empty mission, a firmware-written pattern or an unfit operator landing pattern; operator Land flies the mission landing when Return would; a failsafe Land continues one in progress, else lands stock.
+ *
+ * @boolean
+ * @group Mission
+ */
+PARAM_DEFINE_INT32(MIS_LP_EN, 0);
+
+/**
+ * Landing pattern touchdown ahead of home
+ *
+ * Distance of the touchdown point from home along the launch heading.
+ *
+ * @unit m
+ * @min -150
+ * @max 150
+ * @decimal 1
+ * @increment 1
+ * @group Mission
+ */
+PARAM_DEFINE_FLOAT(MIS_LP_AHEAD, 15.0f);
+
+/**
+ * Landing pattern touchdown offset
+ *
+ * Distance of the touchdown point right of the launch heading, negative left.
+ *
+ * @unit m
+ * @min -50
+ * @max 50
+ * @decimal 1
+ * @increment 1
+ * @group Mission
+ */
+PARAM_DEFINE_FLOAT(MIS_LP_OFFSET, 6.0f);
+
+/**
+ * Landing pattern approach length
+ *
+ * Distance from the orbit exit to the touchdown point; MIS_LP_ALT over this distance is the glide slope, at most FW_LND_ANG.
+ *
+ * @unit m
+ * @min 50
+ * @max 400
+ * @decimal 1
+ * @increment 1
+ * @group Mission
+ */
+PARAM_DEFINE_FLOAT(MIS_LP_DIST, 200.0f);
+
+/**
+ * Landing pattern orbit altitude
+ *
+ * Height above home of the approach orbit, flown on NAV_LOITER_RAD in its direction.
+ *
+ * @unit m
+ * @min 5
+ * @max 50
+ * @decimal 1
+ * @increment 1
+ * @group Mission
+ */
+PARAM_DEFINE_FLOAT(MIS_LP_ALT, 22.0f);
