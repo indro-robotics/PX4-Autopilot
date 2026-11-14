@@ -96,6 +96,14 @@
 #include <uORB/topics/figure_eight_status.h>
 #endif // CONFIG_FIGURE_OF_EIGHT
 
+#ifdef CONFIG_FW_SOARING
+#include <lib/soaring/Soaring.hpp>
+#include <uORB/topics/debug_key_value.h>
+#include <uORB/topics/failsafe_flags.h>
+#include <uORB/topics/home_position.h>
+#include <uORB/topics/soaring_status.h>
+#endif // CONFIG_FW_SOARING
+
 using namespace launchdetection;
 using namespace runwaytakeoff;
 using namespace time_literals;
@@ -409,6 +417,30 @@ private:
 
 	void publishFigureEightStatus(const position_setpoint_s pos_sp);
 #endif // CONFIG_FIGURE_OF_EIGHT
+
+#ifdef CONFIG_FW_SOARING
+	uORB::Subscription _home_position_sub{ORB_ID(home_position)};
+	uORB::Subscription _failsafe_flags_sub{ORB_ID(failsafe_flags)};
+	uORB::Publication<soaring_status_s> _soaring_status_pub{ORB_ID(soaring_status)};
+	uORB::Publication<debug_key_value_s> _debug_key_value_pub{ORB_ID(debug_key_value)};
+
+	soaring::Soaring _soaring;
+	soaring::Params _soar_p{};
+	soaring::Output _soar_out{};
+	home_position_s _home{};
+	uint8_t _battery_warning{0};
+	float _airspeed_tas{NAN};
+	hrt_abstime _time_soar_airspeed{0};
+	float _roll{0.f};
+	hrt_abstime _time_soar_status{0};
+	hrt_abstime _time_soar_debug{0};
+
+	void soar_params_update();
+	void soar_update(const hrt_abstime now);
+	void soar_events(const soaring::State prev_state, const uint8_t prev_reason, const float height);
+	void soar_apply(position_setpoint_s &current_sp);
+	void control_soar_thermal(const Vector2f &ground_speed);
+#endif // CONFIG_FW_SOARING
 
 	// Update our local parameter cache.
 	void parameters_update();

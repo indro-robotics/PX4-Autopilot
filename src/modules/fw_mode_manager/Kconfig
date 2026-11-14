@@ -18,3 +18,10 @@ menuconfig FIGURE_OF_EIGHT
 	---help---
 		Enable support for the figure of eight loitering pattern in fixed wing.
 		NOTE: Enable Mavlink development support to get feedback message.
+
+menuconfig FW_SOARING
+	bool "fw_mode_manager thermal soaring in Hold"
+	default n
+	depends on MODULES_FW_MODE_MANAGER
+	---help---
+		Enable thermal soaring in Hold for fixed wing.

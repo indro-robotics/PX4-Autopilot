@@ -580,7 +580,11 @@ void TECSControl::_calcThrottleControlUpdate(float dt, const STERateLimit &limit
 	const float STE_rate_to_throttle = 1.0f / (limit.STE_rate_max - limit.STE_rate_min);
 
 	// Integral handling
-	if (flag.airspeed_enabled) {
+	if (param.throttle_max - param.throttle_min < FLT_EPSILON) {
+		// a motor held off, as in a glide, would otherwise wind the integrator down without bound
+		_throttle_integ_state = 0.f;
+
+	} else if (flag.airspeed_enabled) {
 		if (param.integrator_gain_throttle > FLT_EPSILON) {
 			// underspeed conditions zero out integration
 			float throttle_integ_input = (_getControlError(ste_rate) * param.integrator_gain_throttle) * dt *

@@ -1,0 +1,181 @@
+module_name: fw_mode_manager
+parameters:
+- group: FW Soaring
+  definitions:
+    SOAR_EN:
+      description:
+        short: Thermal soaring in Hold
+      type: boolean
+      default: 0
+    SOAR_ALT_MIN:
+      description:
+        short: Height above home where the motor restarts and thermalling ends
+      type: float
+      default: 100
+      min: 30
+      max: 1000
+      unit: m
+      decimal: 0
+    SOAR_ALT_CUT:
+      description:
+        short: Height above home where the motor stops
+      type: float
+      default: 250
+      min: 60
+      max: 2000
+      unit: m
+      decimal: 0
+    SOAR_ALT_MAX:
+      description:
+        short: Height above home where thermalling stops
+        long: The effective ceiling is the lower of this and GF_MAX_VER_DIST less 30 m.
+      type: float
+      default: 400
+      min: 80
+      max: 3000
+      unit: m
+      decimal: 0
+    SOAR_MAX_RAD:
+      description:
+        short: Largest distance from home of a thermalling circle
+        long: The effective radius is the lower of this and GF_MAX_HOR_DIST less 100 m.
+      type: float
+      default: 350
+      min: 100
+      max: 5000
+      unit: m
+      decimal: 0
+    SOAR_VSPEED:
+      description:
+        short: Climb rate needed to enter and to stay in a thermal
+      type: float
+      default: 0.5
+      min: 0
+      max: 5
+      unit: m/s
+      decimal: 2
+    SOAR_THML_BANK:
+      description:
+        short: Thermalling bank angle
+      type: float
+      default: 35
+      min: 20
+      max: 50
+      unit: deg
+      decimal: 0
+    SOAR_THML_ASPD:
+      description:
+        short: Thermalling calibrated airspeed
+        long: 0 uses FW_AIRSPD_MIN scaled for the thermalling bank.
+      type: float
+      default: 0
+      min: 0
+      max: 40
+      unit: m/s
+      decimal: 1
+    SOAR_CRSE_ASPD:
+      description:
+        short: Calibrated airspeed in glide and motor climb
+        long: 0 uses FW_AIRSPD_MIN.
+      type: float
+      default: 0
+      min: 0
+      max: 40
+      unit: m/s
+      decimal: 1
+    SOAR_CRSE_RAD:
+      description:
+        short: Hold orbit radius while soaring
+        long: 0 keeps the navigator radius, as does a Hold whose orbit would pass SOAR_MAX_RAD.
+      type: float
+      default: 150
+      min: 0
+      max: 1000
+      unit: m
+      decimal: 0
+    SOAR_MIN_THML_S:
+      description:
+        short: Shortest thermalling time before a weak-lift exit
+      type: float
+      default: 30
+      min: 0
+      max: 600
+      unit: s
+      decimal: 0
+    SOAR_MIN_CRSE_S:
+      description:
+        short: Shortest glide before a thermal entry
+      type: float
+      default: 30
+      min: 0
+      max: 600
+      unit: s
+      decimal: 0
+    SOAR_VARIO_TC:
+      description:
+        short: Time constant of the thermal entry filter
+      type: float
+      default: 2.0
+      min: 0.5
+      max: 10
+      unit: s
+      decimal: 1
+    SOAR_POLAR_CD0:
+      description:
+        short: Zero-lift drag coefficient of the glide polar
+      type: float
+      default: 0.0297
+      min: 0.005
+      max: 0.2
+      decimal: 4
+    SOAR_POLAR_B:
+      description:
+        short: Induced drag factor of the glide polar
+      type: float
+      default: 0.0702
+      min: 0.005
+      max: 0.5
+      decimal: 4
+    SOAR_POLAR_K:
+      description:
+        short: Glide polar wing loading term, 2 m g / (rho0 S)
+      type: float
+      default: 80.2
+      min: 10
+      max: 500
+      unit: (m/s)^2
+      decimal: 1
+    SOAR_Q1:
+      description:
+        short: Thermal strength process noise
+      type: float
+      default: 0.02
+      min: 0.0001
+      max: 1
+      decimal: 4
+    SOAR_Q2:
+      description:
+        short: Thermal radius and position process noise
+      type: float
+      default: 3.0
+      min: 0.01
+      max: 10
+      decimal: 2
+    SOAR_R:
+      description:
+        short: Variometer noise
+      type: float
+      default: 0.5
+      min: 0.05
+      max: 5
+      unit: m/s
+      decimal: 2
+    SOAR_DIST_AHEAD:
+      description:
+        short: First guess of the thermal centre ahead of the aircraft
+      type: float
+      default: 15
+      min: 0
+      max: 100
+      unit: m
+      decimal: 0

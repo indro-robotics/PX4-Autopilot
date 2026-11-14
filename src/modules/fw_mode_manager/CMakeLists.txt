@@ -53,6 +53,12 @@ if(CONFIG_FIGURE_OF_EIGHT)
 	)
 endif()
 
+if(CONFIG_FW_SOARING)
+	list(APPEND POSCONTROL_DEPENDENCIES soaring)
+	set(SOARING_SRCS FixedWingModeManagerSoaring.cpp)
+	set(SOARING_PARAMS soaring_params.yaml)
+endif()
+
 
 
 px4_add_module(
@@ -63,6 +69,9 @@ px4_add_module(
 		FixedWingModeManager.hpp
 		ControllerConfigurationHandler.cpp
 		ControllerConfigurationHandler.hpp
+		${SOARING_SRCS}
+	MODULE_CONFIG
+		${SOARING_PARAMS}
 	DEPENDS
 		${POSCONTROL_DEPENDENCIES}
 	)

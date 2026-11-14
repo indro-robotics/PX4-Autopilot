@@ -104,6 +104,9 @@ FixedWingModeManager::parameters_update()
 	_directional_guidance.setRollTimeConst(_param_npfg_roll_time_const.get());
 	_directional_guidance.setSwitchDistanceMultiplier(_param_npfg_switch_distance_multiplier.get());
 	_directional_guidance.setPeriodSafetyFactor(_param_npfg_period_safety_factor.get());
+#ifdef CONFIG_FW_SOARING
+	soar_params_update();
+#endif // CONFIG_FW_SOARING
 }
 
 void
@@ -170,6 +173,17 @@ FixedWingModeManager::airspeed_poll()
 
 			_airspeed_eas = airspeed_validated.calibrated_airspeed_m_s;
 		}
+
+#ifdef CONFIG_FW_SOARING
+
+		if (PX4_ISFINITE(airspeed_validated.calibrated_airspeed_m_s) && PX4_ISFINITE(airspeed_validated.true_airspeed_m_s)
+		    && airspeed_validated.airspeed_source >= airspeed_validated_s::SOURCE_SENSOR_1
+		    && airspeed_validated.airspeed_source <= airspeed_validated_s::SOURCE_SENSOR_3) {
+			_airspeed_tas = airspeed_validated.true_airspeed_m_s;
+			_time_soar_airspeed = hrt_absolute_time();
+		}
+
+#endif // CONFIG_FW_SOARING
 	}
 
 	// no airspeed updates for one second --> declare invalid
@@ -248,6 +262,9 @@ FixedWingModeManager::vehicle_attitude_poll()
 
 		const Eulerf euler_angles(R);
 		_yaw = euler_angles(2);
+#ifdef CONFIG_FW_SOARING
+		_roll = euler_angles(0);
+#endif // CONFIG_FW_SOARING
 
 		const Vector3f body_acceleration = R.transpose() * Vector3f{_local_pos.ax, _local_pos.ay, _local_pos.az};
 		_body_acceleration_x = body_acceleration(0);
@@ -536,6 +553,15 @@ FixedWingModeManager::control_auto(const float control_interval, const Vector2d 
 				   const position_setpoint_s &pos_sp_next)
 {
 	position_setpoint_s current_sp = pos_sp_curr;
+#ifdef CONFIG_FW_SOARING
+
+	if (_soar_out.state == soaring::State::THERMAL) {
+		control_soar_thermal(ground_speed);
+		return;
+	}
+
+	soar_apply(current_sp);
+#endif // CONFIG_FW_SOARING
 	move_position_setpoint_for_vtol_transition(current_sp);
 
 	const uint8_t position_sp_type = handle_setpoint_type(current_sp, pos_sp_next);
@@ -2131,6 +2157,10 @@ FixedWingModeManager::Run()
 		set_control_mode_current(now);
 
 		update_in_air_states(now);
+
+#ifdef CONFIG_FW_SOARING
+		soar_update(now);
+#endif // CONFIG_FW_SOARING
 
 		// restore nominal TECS parameters in case changed intermittently (e.g. in landing handling)
 
