@@ -88,8 +88,6 @@
 #include "streams/GPS_STATUS.hpp"
 #include "streams/HEARTBEAT.hpp"
 #include "streams/HIGHRES_IMU.hpp"
-#include "streams/HIL_ACTUATOR_CONTROLS.hpp"
-#include "streams/HIL_STATE_QUATERNION.hpp"
 #include "streams/HOME_POSITION.hpp"
 #include "streams/HYGROMETER_SENSOR.hpp"
 #include "streams/LANDING_TARGET.hpp"
@@ -369,9 +367,6 @@ static const StreamListItem streams_list[] = {
 	create_stream_list_item<MavlinkStreamServoOutputRaw<0> >(),
 	create_stream_list_item<MavlinkStreamServoOutputRaw<1> >(),
 #endif // SERVO_OUTPUT_RAW_HPP
-#if defined(HIL_ACTUATOR_CONTROLS_HPP)
-	create_stream_list_item<MavlinkStreamHILActuatorControls>(),
-#endif // HIL_ACTUATOR_CONTROLS_HPP
 #if defined(POSITION_TARGET_GLOBAL_INT_HPP)
 	create_stream_list_item<MavlinkStreamPositionTargetGlobalInt>(),
 #endif // POSITION_TARGET_GLOBAL_INT_HPP
@@ -435,9 +430,6 @@ static const StreamListItem streams_list[] = {
 #if defined(HIGH_LATENCY2_HPP)
 	create_stream_list_item<MavlinkStreamHighLatency2>(),
 #endif // HIGH_LATENCY2_HPP
-#if defined(HIL_STATE_QUATERNION_HPP)
-	create_stream_list_item<MavlinkStreamHILStateQuaternion>(),
-#endif // HIL_STATE_QUATERNION_HPP
 #if defined(PING_HPP)
 	create_stream_list_item<MavlinkStreamPing>(),
 #endif // PING_HPP

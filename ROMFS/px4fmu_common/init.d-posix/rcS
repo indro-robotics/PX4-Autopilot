@@ -278,7 +278,7 @@ then
 	attitude_estimator_q start
 fi
 
-if ! pwm_out_sim start -m sim
+if ! pwm_out_sim start
 then
 	tune_control play error
 fi

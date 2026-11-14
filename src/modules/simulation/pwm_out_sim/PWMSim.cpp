@@ -41,15 +41,13 @@
 
 #include <px4_platform_common/sem.hpp>
 
-PWMSim::PWMSim(bool hil_mode_enabled) :
+PWMSim::PWMSim() :
 	OutputModuleInterface(MODULE_NAME, px4::wq_configurations::hp_default)
 {
 	_mixing_output.setAllDisarmedValues(PWM_SIM_DISARMED_MAGIC);
 	_mixing_output.setAllFailsafeValues(PWM_SIM_FAILSAFE_MAGIC);
 	_mixing_output.setAllMinValues(PWM_SIM_PWM_MIN_MAGIC);
 	_mixing_output.setAllMaxValues(PWM_SIM_PWM_MAX_MAGIC);
-
-	_mixing_output.setIgnoreLockdown(hil_mode_enabled);
 }
 
 PWMSim::~PWMSim()
@@ -122,24 +120,7 @@ void PWMSim::Run()
 
 int PWMSim::task_spawn(int argc, char *argv[])
 {
-	bool hil_mode = false;
-
-	int myoptind = 1;
-	int ch;
-	const char *myoptarg = nullptr;
-
-	while ((ch = px4_getopt(argc, argv, "m:", &myoptind, &myoptarg)) != EOF) {
-		switch (ch) {
-		case 'm':
-			hil_mode = strcmp(myoptarg, "hil") == 0;
-			break;
-
-		default:
-			return print_usage("unrecognized flag");
-		}
-	}
-
-	PWMSim *instance = new PWMSim(hil_mode);
+	PWMSim *instance = new PWMSim();
 
 	if (!instance) {
 		PX4_ERR("alloc failed");
@@ -181,13 +162,12 @@ Its only function is to take `actuator_control` uORB messages,
 mix them with any loaded mixer and output the result to the
 `actuator_output` uORB topic.
 
-It is used in SITL and HITL.
+It is used in SITL.
 
 )DESCR_STR");
 
 	PRINT_MODULE_USAGE_NAME("pwm_out_sim", "driver");
 	PRINT_MODULE_USAGE_COMMAND_DESCR("start", "Start the module");
-	PRINT_MODULE_USAGE_PARAM_STRING('m', "sim", "hil|sim", "Mode", true);
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
 	return 0;

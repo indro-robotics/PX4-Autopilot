@@ -280,10 +280,6 @@ public:
 
 	enum MAVLINK_MODE	get_mode() { return _mode; }
 
-	bool			get_hil_enabled() { return _hil_enabled; }
-
-	bool			get_use_hil_gps() { return _param_mav_usehilgps.get(); }
-
 	bool			get_forward_externalsp() { return _param_mav_fwdextsp.get(); }
 
 	bool			get_flow_control_enabled() { return _flow_control_mode; }
@@ -316,16 +312,6 @@ public:
 	unsigned		get_free_tx_buf();
 
 	static int		start_helper(int argc, char *argv[]);
-
-	/**
-	 * Enable / disable Hardware in the Loop simulation mode.
-	 *
-	 * @param hil_enabled	The new HIL enable/disable state.
-	 * @return		OK if the HIL state changed, ERROR if the
-	 *			requested change could not be made or was
-	 *			redundant.
-	 */
-	int			set_hil_enabled(bool hil_enabled);
 
 	/**
 	 * Set communication protocol for this mavlink instance
@@ -560,7 +546,6 @@ private:
 	mavlink_status_t	_mavlink_status {};
 
 	/* states */
-	bool			_hil_enabled{false};		/**< Hardware In the Loop mode */
 	bool			_is_usb_uart{false};		/**< Port is USB */
 	bool			_wait_to_transmit{false};  	/**< Wait to transmit until received messages. */
 	bool			_received_messages{false};	/**< Whether we've received valid mavlink messages. */
@@ -664,12 +649,10 @@ private:
 		(ParamInt<px4::params::MAV_PROTO_VER>) _param_mav_proto_ver,
 		(ParamInt<px4::params::MAV_SIK_RADIO_ID>) _param_sik_radio_id,
 		(ParamInt<px4::params::MAV_TYPE>) _param_mav_type,
-		(ParamBool<px4::params::MAV_USEHILGPS>) _param_mav_usehilgps,
 		(ParamBool<px4::params::MAV_FWDEXTSP>) _param_mav_fwdextsp,
 		(ParamBool<px4::params::MAV_HASH_CHK_EN>) _param_mav_hash_chk_en,
 		(ParamBool<px4::params::MAV_HB_FORW_EN>) _param_mav_hb_forw_en,
 		(ParamInt<px4::params::MAV_RADIO_TOUT>)      _param_mav_radio_timeout,
-		(ParamInt<px4::params::SYS_HITL>) _param_sys_hitl,
 		(ParamBool<px4::params::SYS_FAILURE_EN>) _param_sys_failure_injection_enabled
 	)
 

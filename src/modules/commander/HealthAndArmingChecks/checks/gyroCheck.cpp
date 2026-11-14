@@ -55,12 +55,7 @@ void GyroChecks::checkAndReport(const Context &context, Report &reporter)
 			is_valid = _sensor_gyro_sub[instance].copy(&gyro_data) && (gyro_data.device_id != 0) && (gyro_data.timestamp != 0)
 				   && (hrt_elapsed_time(&gyro_data.timestamp) < 1_s);
 
-			if (context.status().hil_state == vehicle_status_s::HIL_STATE_ON) {
-				is_calibration_valid = true;
-
-			} else {
-				is_calibration_valid = (calibration::FindCurrentCalibrationIndex("GYRO", gyro_data.device_id) >= 0);
-			}
+			is_calibration_valid = (calibration::FindCurrentCalibrationIndex("GYRO", gyro_data.device_id) >= 0);
 
 			reporter.setIsPresent(health_component_t::gyro);
 		}

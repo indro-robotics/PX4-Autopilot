@@ -55,12 +55,7 @@ void AccelerometerChecks::checkAndReport(const Context &context, Report &reporte
 			is_valid = _sensor_accel_sub[instance].copy(&accel_data) && (accel_data.device_id != 0) && (accel_data.timestamp != 0)
 				   && (hrt_elapsed_time(&accel_data.timestamp) < 1_s);
 
-			if (context.status().hil_state == vehicle_status_s::HIL_STATE_ON) {
-				is_calibration_valid = true;
-
-			} else {
-				is_calibration_valid = (calibration::FindCurrentCalibrationIndex("ACC", accel_data.device_id) >= 0);
-			}
+			is_calibration_valid = (calibration::FindCurrentCalibrationIndex("ACC", accel_data.device_id) >= 0);
 
 			reporter.setIsPresent(health_component_t::accel);
 		}

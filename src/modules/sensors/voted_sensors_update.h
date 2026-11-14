@@ -76,7 +76,7 @@ public:
 	 * @param parameters parameter values. These do not have to be initialized when constructing this object.
 	 * Only when calling init(), they have to be initialized.
 	 */
-	VotedSensorsUpdate(bool hil_enabled, uORB::SubscriptionCallbackWorkItem(&vehicle_imu_sub)[MAX_SENSOR_COUNT]);
+	VotedSensorsUpdate(uORB::SubscriptionCallbackWorkItem(&vehicle_imu_sub)[MAX_SENSOR_COUNT]);
 
 	/**
 	 * This tries to find new sensor instances. This is called from init(), then it can be called periodically.
@@ -161,8 +161,6 @@ private:
 	uORB::Subscription _sensor_selection_sub{ORB_ID(sensor_selection)};
 
 	sensor_combined_s _last_sensor_data[MAX_SENSOR_COUNT] {};	/**< latest sensor data from all sensors instances */
-
-	const bool _hil_enabled{false};			/**< is hardware-in-the-loop mode enabled? */
 
 	bool _selection_changed{true};			/**< true when a sensor selection has changed and not been published */
 

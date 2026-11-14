@@ -120,8 +120,6 @@ public:
 	/** @see ModuleBase::print_status() */
 	int print_status() override;
 
-	void enable_hil();
-
 private:
 	bool isArmed() const { return (_vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED); }
 	static ModeChangeSource getSourceFromCommand(const vehicle_command_s &cmd);

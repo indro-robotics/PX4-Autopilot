@@ -2875,8 +2875,7 @@ int EKF2::task_spawn(int argc, char *argv[])
 
 		while ((multi_instances_allocated < multi_instances)
 		       && (vehicle_status_sub.get().arming_state != vehicle_status_s::ARMING_STATE_ARMED)
-		       && ((hrt_elapsed_time(&time_started) < 30_s)
-			   || (vehicle_status_sub.get().hil_state == vehicle_status_s::HIL_STATE_ON))) {
+		       && (hrt_elapsed_time(&time_started) < 30_s)) {
 
 			vehicle_status_sub.update();
 

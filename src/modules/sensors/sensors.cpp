@@ -43,12 +43,11 @@
 
 #include "sensors.hpp"
 
-Sensors::Sensors(bool hil_enabled) :
+Sensors::Sensors() :
 	ModuleParams(nullptr),
 	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers),
-	_hil_enabled(hil_enabled),
 	_loop_perf(perf_alloc(PC_ELAPSED, "sensors")),
-	_voted_sensors_update(hil_enabled, _vehicle_imu_sub)
+	_voted_sensors_update(_vehicle_imu_sub)
 {
 	_sensor_pub.advertise();
 
@@ -347,11 +346,6 @@ void Sensors::diff_pres_poll()
 
 void Sensors::adc_poll()
 {
-	/* only read if not in HIL mode */
-	if (_hil_enabled) {
-		return;
-	}
-
 #ifdef ADC_AIRSPEED_VOLTAGE_CHANNEL
 
 	if (_parameters.diff_pres_analog_scale > 0.0f) {
@@ -616,35 +610,7 @@ void Sensors::Run()
 
 int Sensors::task_spawn(int argc, char *argv[])
 {
-	bool hil_enabled = false;
-	bool error_flag = false;
-
-	int myoptind = 1;
-	int ch;
-	const char *myoptarg = nullptr;
-
-	while ((ch = px4_getopt(argc, argv, "h", &myoptind, &myoptarg)) != EOF) {
-		switch (ch) {
-		case 'h':
-			hil_enabled = true;
-			break;
-
-		case '?':
-			error_flag = true;
-			break;
-
-		default:
-			PX4_WARN("unrecognized flag");
-			error_flag = true;
-			break;
-		}
-	}
-
-	if (error_flag) {
-		return PX4_ERROR;
-	}
-
-	Sensors *instance = new Sensors(hil_enabled);
+	Sensors *instance = new Sensors();
 
 	if (instance) {
 		_object.store(instance);
@@ -767,7 +733,6 @@ It runs in its own thread and polls on the currently selected gyro topic.
 
 	PRINT_MODULE_USAGE_NAME("sensors", "system");
 	PRINT_MODULE_USAGE_COMMAND("start");
-	PRINT_MODULE_USAGE_PARAM_FLAG('h', "Start in HIL mode", true);
 	PRINT_MODULE_USAGE_DEFAULT_COMMANDS();
 
 	return 0;
