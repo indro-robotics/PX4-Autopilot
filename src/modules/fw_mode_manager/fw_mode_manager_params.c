@@ -699,3 +699,32 @@ PARAM_DEFINE_FLOAT(FW_FLAPS_LND_SCL, 1.0f);
  * @group FW Auto Landing
  */
 PARAM_DEFINE_FLOAT(FW_SPOILERS_LND, 0.f);
+
+/**
+ * Thrust loss wings-level height
+ *
+ * Height above ground below which the aircraft flies wings level once the motor failure flag is set,
+ * raised by the distance to the active position setpoint over FW_TL_GLIDE; a straight landing is exempt.
+ *
+ * @unit m
+ * @min 0.0
+ * @max 100.0
+ * @decimal 1
+ * @increment 1.0
+ * @group FW General
+ */
+PARAM_DEFINE_FLOAT(FW_TL_LVL_ALT, 20.f);
+
+/**
+ * Thrust loss glide ratio
+ *
+ * Horizontal distance per metre of height that a thrust loss glide is assumed to reach. Once the motor
+ * failure flag is set, the wings-level height rises by the distance to the active position setpoint over this ratio.
+ *
+ * @min 1.0
+ * @max 30.0
+ * @decimal 1
+ * @increment 0.5
+ * @group FW General
+ */
+PARAM_DEFINE_FLOAT(FW_TL_GLIDE, 8.f);

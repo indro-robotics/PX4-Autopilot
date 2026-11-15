@@ -58,6 +58,7 @@ public:
 	~RtlDirectMissionLand() = default;
 
 	void on_activation() override;
+	void on_active() override;
 	void on_inactive() override;
 
 	rtl_time_estimate_s calc_rtl_time_estimate() override;

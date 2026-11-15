@@ -82,6 +82,9 @@ bool FailureDetector::update(const vehicle_status_s &vehicle_status, const vehic
 		}
 	}
 
+	updateThrustLoss(vehicle_status);
+	_status.flags.motor = _esc_motor_failure || _thrust_loss.lost();
+
 	if (_param_fd_imb_prop_thr.get() > 0) {
 		updateImbalancedPropStatus();
 	}
@@ -333,13 +336,13 @@ void FailureDetector::updateMotorStatus(const vehicle_status_s &vehicle_status, 
 
 		bool critical_esc_failure = (_motor_failure_esc_timed_out_mask != 0 || _motor_failure_esc_under_current_mask != 0);
 
-		if (critical_esc_failure && !(_status.flags.motor)) {
+		if (critical_esc_failure && !_esc_motor_failure) {
 			// Add motor failure flag to bitfield
-			_status.flags.motor = true;
+			_esc_motor_failure = true;
 
-		} else if (!critical_esc_failure && _status.flags.motor) {
+		} else if (!critical_esc_failure && _esc_motor_failure) {
 			// Reset motor failure flag
-			_status.flags.motor = false;
+			_esc_motor_failure = false;
 		}
 
 	} else { // Disarmed
@@ -349,6 +352,24 @@ void FailureDetector::updateMotorStatus(const vehicle_status_s &vehicle_status, 
 		}
 
 		_motor_failure_esc_under_current_mask = 0;
-		_status.flags.motor = false;
+		_esc_motor_failure = false;
+	}
+}
+
+void FailureDetector::updateThrustLoss(const vehicle_status_s &vehicle_status)
+{
+	vehicle_land_detected_s land_detected;
+
+	if (_vehicle_land_detected_sub.update(&land_detected)) {
+		_landed = land_detected.landed;
+	}
+
+	const bool armed = vehicle_status.arming_state == vehicle_status_s::ARMING_STATE_ARMED;
+	tecs_status_s tecs_status{};
+
+	if (_tecs_status_sub.update(&tecs_status) || !armed) {
+		const bool flying = vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING && !_landed;
+		_thrust_loss.update(tecs_status.timestamp, armed, flying, tecs_status.throttle_sp, tecs_status.total_energy_rate,
+		{_param_fd_fw_tl_time.get(), _param_fd_fw_tl_thr.get(), _param_fd_fw_tl_rate.get()});
 	}
 }

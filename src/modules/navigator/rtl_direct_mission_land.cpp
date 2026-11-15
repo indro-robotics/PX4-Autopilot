@@ -92,13 +92,15 @@ void RtlDirectMissionLand::on_activation()
 {
 	_land_detected_sub.update();
 	_global_pos_sub.update();
+	_vehicle_status_sub.update();
 
 	_needs_climbing = false;
 
 	if (hasMissionLandStart()) {
 		_is_current_planned_mission_item_valid = (goToItem(_mission.land_start_index, false) == PX4_OK);
 
-		_needs_climbing = checkNeedsToClimb();
+		_needs_climbing = !(_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)
+				  && checkNeedsToClimb();
 
 	} else {
 		_is_current_planned_mission_item_valid = false;
@@ -111,6 +113,18 @@ void RtlDirectMissionLand::on_activation()
 	}
 
 	MissionBase::on_activation();
+}
+
+void RtlDirectMissionLand::on_active()
+{
+	MissionBase::on_active();
+
+	// a thrust loss leaves no energy for the climb, so the land start item takes over in this cycle
+	if (_work_item_type == WorkItemType::WORK_ITEM_TYPE_CLIMB
+	    && (_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)) {
+		_work_item_type = WorkItemType::WORK_ITEM_TYPE_DEFAULT;
+		set_mission_items();
+	}
 }
 
 bool RtlDirectMissionLand::setNextMissionItem()

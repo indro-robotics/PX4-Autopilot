@@ -652,6 +652,10 @@ FwLateralLongitudinalControl::adapt_airspeed_setpoint(const float control_interv
 	// constrain airspeed to feasible range
 	calibrated_airspeed_setpoint = math::constrain(calibrated_airspeed_setpoint, system_min_airspeed, system_max_airspeed);
 
+	if (_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR) {
+		calibrated_airspeed_setpoint = system_min_airspeed;
+	}
+
 	if (!PX4_ISFINITE(_airspeed_slew_rate_controller.getState())) {
 
 		// initialize the airspeed setpoint
