@@ -2358,9 +2358,11 @@ FixedWingModeManager::Run()
 		if (_launch_aborted) {
 			_ctrl_configuration_handler.setThrottleMax(_param_fw_thr_idle.get());
 
-			// a failsafe in the abort glide would bank toward its loiter a wing length above the ground
+			// a failsafe in the abort glide would bank toward its loiter a wing length above the ground and pitch up to its climb at idle
 			if (auto_mode) {
 				_ctrl_configuration_handler.setLateralAccelMax(0.f);
+				_ctrl_configuration_handler.setPitchMin(radians(_param_fw_lnd_fl_pmax.get()));
+				_ctrl_configuration_handler.setPitchMax(radians(_param_fw_lnd_fl_pmax.get()));
 			}
 		}
 
@@ -2441,7 +2443,8 @@ FixedWingModeManager::reset_landing_state()
 float FixedWingModeManager::flarePitch(float height_rate_setpoint, float pitch_min, float pitch_max,
 				       const Vector2f &ground_speed, float dt)
 {
-	if (_param_fw_lnd_fl_kp.get() < FLT_EPSILON) {
+	// in the abort glide the pitch is the TECS limit the abort latch holds
+	if (_param_fw_lnd_fl_kp.get() < FLT_EPSILON || _launch_aborted) {
 		return NAN;
 	}
 

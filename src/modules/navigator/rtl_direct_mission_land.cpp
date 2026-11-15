@@ -122,6 +122,16 @@ void RtlDirectMissionLand::on_active()
 		_work_item_type = WorkItemType::WORK_ITEM_TYPE_DEFAULT;
 		set_mission_items();
 	}
+
+	// nor to hold the present height, which an orbit needs on its circle before it takes its own height
+	position_setpoint_s &sp = _navigator->get_position_setpoint_triplet()->current;
+	const float orbit_alt = get_absolute_altitude_for_item(_mission_item);
+
+	if (_mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT && _navigator->thrust_lost() && sp.valid
+	    && fabsf(sp.alt - orbit_alt) >= FLT_EPSILON) {
+		sp.alt = orbit_alt;
+		_navigator->set_position_setpoint_triplet_updated();
+	}
 }
 
 bool RtlDirectMissionLand::setNextMissionItem()

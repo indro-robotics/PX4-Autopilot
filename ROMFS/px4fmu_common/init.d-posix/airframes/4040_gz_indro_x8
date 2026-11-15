@@ -66,3 +66,15 @@ param set-default FW_R_TC 0.4
 param set-default FW_PSP_OFF 0.001
 # Level trim of the simulated wing at 18 m/s and 3.78 kg.
 param set-default FW_THR_TRIM 0.48
+
+# Flare law tuned on the simulated wing; the aircraft flies the stock flare until its own law is tuned.
+# Integral of the flare sink error, for a steady error.
+param set-default FW_LND_FL_KI 2.5
+# Flare pitch from the sink error on range data: 7 deg per m/s landed softest in calm and in 10 m/s wind.
+param set-default FW_LND_FL_KP 7
+# Flare and abort glide pitch up to 4.5 deg: above it a wingtip touches first at gust roll.
+param set-default FW_LND_FL_PMAX 4.5
+# The law lowers the nose to 0 deg: at a floor of 4 the pitch stays at 4 and the wing floats past the touchdown point.
+param set-default FW_LND_FL_PMIN 0
+# Sink setpoint at the ground: 0.3 landed softer in calm than 0.5.
+param set-default FW_LND_FL_SINK 0.3

@@ -133,7 +133,8 @@ param set-default WEIGHT_GROSS 3.78
 
 # LAUNCH
 param set-default FW_LAUN_AC_T 0.1
-param set-default FW_LAUN_AC_THLD 20.0
+# Launch detected from 15 m/s/s: at 20 a shot of two band runs at 50 % loss goes undetected.
+param set-default FW_LAUN_AC_THLD 15
 # Takeoff course from the GNSS track over 20 m: the launcher rail bends the compass heading.
 param set-default FW_LAUN_CRS_DST 20
 param set-default FW_LAUN_DETCN_ON 1
@@ -149,15 +150,9 @@ param set-default FW_LND_ABORT 1
 param set-default FW_LND_AIRSPD 14
 param set-default FW_LND_ANG 6.3
 param set-default FW_LND_EARLYCFG 1
-# Integral of the flare sink error, for a steady error.
-param set-default FW_LND_FL_KI 2.5
-# Flare pitch from the sink error on range data: 7 deg per m/s landed softest in calm and in 10 m/s wind.
-param set-default FW_LND_FL_KP 7
 # Flare pitch stays under 4.5 deg: above it a wingtip touches first at gust roll.
 param set-default FW_LND_FL_PMAX 4
 param set-default FW_LND_FL_PMIN 4
-# Sink setpoint at the ground: 0.3 landed softer in calm than 0.5.
-param set-default FW_LND_FL_SINK 0.3
 param set-default FW_LND_FL_TIME 0.3
 # Flare trigger stays on FW_LND_FL_TIME: a time to touchdown of 1.4 s landed no softer in gusts.
 param set-default FW_LND_FL_TTD 0
