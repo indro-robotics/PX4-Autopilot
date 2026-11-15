@@ -66,3 +66,5 @@ px4_add_module(
 	DEPENDS
 		${POSCONTROL_DEPENDENCIES}
 	)
+
+px4_add_unit_gtest(SRC FlareLawTest.cpp)
