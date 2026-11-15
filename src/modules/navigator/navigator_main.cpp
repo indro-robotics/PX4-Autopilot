@@ -836,7 +836,7 @@ void Navigator::run()
 		case vehicle_status_s::NAVIGATION_STATE_AUTO_RTL:
 
 			// If we are already in mission landing, do not switch.
-			if (_navigation_mode == &_mission && _mission.isLanding()) {
+			if (_navigation_mode == &_mission && (_mission.isLanding() || landingPatternFlying())) {
 				navigation_mode_new = &_mission;
 				break;
 
@@ -883,7 +883,7 @@ void Navigator::run()
 				if (!_land_via_mission) {
 					navigation_mode_new = &_land;
 
-				} else if (_navigation_mode == &_mission && (!land_entry || _hold_keep || _mission.isLanding())) {
+				} else if (_navigation_mode == &_mission && (!land_entry || _hold_keep || landingPatternFlying())) {
 					navigation_mode_new = &_mission;
 
 				} else {
@@ -1679,9 +1679,10 @@ void Navigator::landingPatternWrite(float heading, bool ready)
 
 bool Navigator::landingPatternFlying()
 {
+	// A one-sample orbit ring test misses when a headwind pushes the orbit outward.
 	return landing_pattern_enabled()
-	       && ((_navigation_mode == &_mission && _mission.isLanding())
-		   || (_navigation_mode == &_rtl && _rtl.flysMissionLanding() && _rtl.isLanding()));
+	       && ((_navigation_mode == &_mission && _mission.landingStarted())
+		   || (_navigation_mode == &_rtl && _rtl.flysMissionLanding()));
 }
 
 void Navigator::landingPatternItems(float heading, mission_item_s items[3])
