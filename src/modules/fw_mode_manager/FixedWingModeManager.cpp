@@ -133,11 +133,15 @@ FixedWingModeManager::vehicle_command_poll()
 
 	while (_vehicle_command_sub.update(&vehicle_command)) {
 #ifdef CONFIG_FW_SOARING
-		_soar_operator_cmd |= vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_MODE
-				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_REPOSITION
-				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_ALTITUDE
-				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_ORBIT
-				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_SPEED;
+		if (vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_MODE) {
+			_soar_operator_cmd |= soaring::OPERATOR_MODE;
+
+		} else if (vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_REPOSITION
+			   || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_ALTITUDE
+			   || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_ORBIT
+			   || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_SPEED) {
+			_soar_operator_cmd |= soaring::OPERATOR_NAV;
+		}
 #endif // CONFIG_FW_SOARING
 
 		if (vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_GO_AROUND) {

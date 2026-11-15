@@ -122,6 +122,7 @@ struct Rig {
 	float rate{14.f / 60.f};
 	bool motor{true};		// CLIMB adds energy for a climb_powered climb
 	float climb_powered{3.f};	// [m/s]
+	float throttle{1.f};		// TECS throttle setpoint in CLIMB
 
 	Rig(bool clean_turn = true)
 	{
@@ -172,6 +173,7 @@ struct Rig {
 			in.tas = speed;
 			in.roll = roll;
 			in.yaw = psi;
+			in.throttle = out.state == State::CLIMB ? throttle : 0.f;
 			soar.update(in, p, out);
 		}
 	}
@@ -477,11 +479,95 @@ TEST(SoaringStates, ClimbHoldsHeightAboveTheCut)
 	rig.in.height = 380.f;
 	rig.toGlide();
 	rig.speed = 11.5f;
-	rig.step(1.1f);
+	float entry = NAN;
+
+	for (int i = 0; i < 60 && rig.out.state == State::GLIDE; i++) {
+		entry = rig.in.height;
+		rig.step(kDt);
+	}
+
 	ASSERT_EQ(rig.out.state, State::CLIMB);
 	ASSERT_EQ(rig.out.reason, REASON_AIRSPEED_LOW);
-	// the cut setpoint would be 255 m
-	EXPECT_NEAR(rig.out.alt_sp, rig.in.height, 0.1f);
+	// the cut setpoint would be 255 m; the entry height, within one 50 Hz sample, is latched
+	EXPECT_NEAR(rig.out.alt_sp, entry, 0.1f);
+	rig.speed = 14.f;
+	rig.step(5.f);
+	ASSERT_EQ(rig.out.state, State::CLIMB);
+	EXPECT_GT(rig.in.height, entry + 10.f);
+	EXPECT_NEAR(rig.out.alt_sp, entry, 0.1f);
+}
+
+TEST(SoaringStates, ClimbSetpointCappedAtTheCeiling)
+{
+	// ceiling min(400, 450 - 30) = 400; an airspeed-low entry at 410 m climbs to 400 m, not 410 m
+	Rig rig;
+	rig.in.height = 410.f;
+	rig.toGlide();
+	rig.speed = 11.5f;
+	rig.step(1.1f);
+	ASSERT_EQ(rig.out.state, State::CLIMB);
+	EXPECT_FLOAT_EQ(rig.out.alt_sp, 400.f);
+}
+
+TEST(SoaringStates, ClimbSetpointIgnoresLiftWhileTheCutGateIsClosed)
+{
+	// floor 222.9 m above the cut less 30 m: CLIMB stays on and must hold cut + 5 m, not the height reached in lift
+	Rig rig;
+	rig.p.alt_pat = 215.f;
+	rig.in.height = 200.f;
+	rig.step(2.1f);
+	ASSERT_EQ(rig.out.state, State::CLIMB);
+	EXPECT_FLOAT_EQ(rig.out.alt_sp, 255.f);
+	rig.w = 3.f;
+	rig.step(30.f);
+	ASSERT_EQ(rig.out.state, State::CLIMB);
+	EXPECT_GT(rig.in.height, 300.f);
+	EXPECT_FLOAT_EQ(rig.out.alt_sp, 255.f);
+}
+
+TEST(SoaringStates, ClimbFliesSpeedPriorityThroughoutAndTrimSpeedInTheLast50m)
+{
+	// a dead motor in CLIMB must cost height, not airspeed; the cut must start with trim speed in hand, not FW_AIRSPD_MIN
+	Rig rig;
+	rig.in.height = 100.f;
+	rig.step(2.1f);
+	ASSERT_EQ(rig.out.state, State::CLIMB);
+	const float entry = rig.in.height;
+	int cruise = 0;
+	int trim = 0;
+
+	while (rig.out.state == State::CLIMB && rig.t < 120.f) {
+		ASSERT_FLOAT_EQ(rig.out.speed_weight, 2.f) << rig.in.height;
+
+		if (rig.in.height < 250.f - 50.f) {
+			ASSERT_FLOAT_EQ(rig.out.airspeed_sp, rig.p.airspd_min) << rig.in.height;
+			cruise++;
+
+		} else {
+			ASSERT_FLOAT_EQ(rig.out.airspeed_sp, rig.p.airspd_trim) << rig.in.height;
+			trim++;
+		}
+
+		rig.step(kDt);
+	}
+
+	// at 3 m/s and 50 Hz: entry to 200 m at FW_AIRSPD_MIN, then 200 m to the 250 m cut, 16.7 s, at FW_AIRSPD_TRIM
+	EXPECT_NEAR(cruise, (200.f - entry) / 3.f * 50.f, 5.f);
+	EXPECT_NEAR(trim, 50.f / 3.f * 50.f, 5.f);
+	ASSERT_EQ(rig.out.state, State::GLIDE);
+	EXPECT_TRUE(std::isnan(rig.out.speed_weight));
+	EXPECT_FLOAT_EQ(rig.out.airspeed_sp, rig.p.airspd_min);
+
+	// a trim above FW_AIRSPD_MAX flies FW_AIRSPD_MAX; the 222.9 m floor holds CLIMB from 200 m
+	Rig capped;
+	capped.p.airspd_trim = 25.f;
+	capped.p.alt_pat = 215.f;
+	capped.step(2.1f);
+	ASSERT_EQ(capped.out.state, State::CLIMB);
+	capped.step(10.f);
+	ASSERT_EQ(capped.out.state, State::CLIMB);
+	ASSERT_GE(capped.in.height, 200.f);
+	EXPECT_FLOAT_EQ(capped.out.airspeed_sp, capped.p.airspd_max);
 }
 
 TEST(SoaringStates, RadiusExitWhenCircleLeavesFence)
@@ -569,7 +655,7 @@ TEST(SoaringStates, ThermalLeftRecordsGain)
 }
 
 // TAS over CAS 1.0243 makes FW_AIRSPD_MIN 14 m/s a 14.34 m/s TAS with a 1.452 m/s polar sink
-static float floorAt(float north, float wind_n, float alt_pat = 80.f)
+static float floorAt(float north, float wind_n, float alt_pat = 80.f, float east = 0.f, float wind_e = 0.f)
 {
 	Soaring soar;
 	Params p;
@@ -578,9 +664,11 @@ static float floorAt(float north, float wind_n, float alt_pat = 80.f)
 	p.alt_pat = alt_pat;
 	in.armed = true;
 	in.x = north;
+	in.y = east;
 	in.cas = 14.f;
 	in.tas = 14.34f;
 	in.wind_n = wind_n;
+	in.wind_e = wind_e;
 	in.wind_valid = true;
 	soar.update(in, p, out);
 	return out.alt_floor;
@@ -595,6 +683,16 @@ TEST(SoaringFloor, GlideReachHome)
 	// home lies south: a wind toward the north is a headwind on the way home, 14.34 - 8 = 6.34 m/s
 	EXPECT_NEAR(floorAt(350.f, 8.f), 184.3f, 0.1f);
 	EXPECT_NEAR(floorAt(350.f, -8.f), 109.6f, 0.1f);
+}
+
+TEST(SoaringFloor, GlideReachHomeEastOfHome)
+{
+	// home lies west: a wind toward the east is the same 6.34 m/s headwind, a wind toward the north is a crosswind
+	EXPECT_NEAR(floorAt(0.f, 0.f, 80.f, 350.f, 8.f), 184.3f, 0.1f);
+	EXPECT_NEAR(floorAt(0.f, 0.f, 80.f, 350.f, -8.f), 109.6f, 0.1f);
+	EXPECT_NEAR(floorAt(0.f, 8.f, 80.f, 350.f, 0.f), 126.1f, 0.1f);
+	// north-east at 247.5 m each way, 350 m out, wind 8 m/s toward the north-east: the full 8 m/s against
+	EXPECT_NEAR(floorAt(247.49f, 5.657f, 80.f, 247.49f, 5.657f), 184.3f, 0.1f);
 }
 
 TEST(SoaringFloor, TransitionsUseTheFloor)
@@ -649,6 +747,45 @@ TEST(SoaringVario, NoEntryOnMotorEnergyAfterTheCut)
 	EXPECT_GT(peak, 0.5f);
 }
 
+// lift of netto 3 m/s while soaring waits: the entry filter reads it, and GLIDE must start from 0
+static float nettoAtGlideEntry(bool from_off)
+{
+	Rig rig;
+	rig.p.min_crse_s = 0.f;
+	rig.toGlide();
+	rig.w = 3.f;
+
+	if (from_off) {
+		rig.p.enabled = false;
+
+	} else {
+		rig.in.allowed = false;
+		rig.in.inhibit_reason = REASON_BATTERY;
+	}
+
+	rig.step(10.f);
+	EXPECT_LT(rig.out.state, State::CLIMB);
+	EXPECT_GT(rig.out.vario_netto_slow, 2.8f);
+	rig.p.enabled = true;
+	rig.in.allowed = true;
+	rig.in.inhibit_reason = REASON_NONE;
+
+	const float t_end = rig.t + 5.f;
+
+	while (rig.out.state < State::CLIMB && rig.t < t_end) {
+		rig.step(kDt);
+	}
+
+	EXPECT_EQ(rig.out.state, State::GLIDE);
+	return rig.out.vario_netto_slow;
+}
+
+TEST(SoaringVario, NettoResetOnGlideEntryFromInhibitAndOff)
+{
+	EXPECT_FLOAT_EQ(nettoAtGlideEntry(false), 0.f);
+	EXPECT_FLOAT_EQ(nettoAtGlideEntry(true), 0.f);
+}
+
 static void toState(Rig &rig, State state)
 {
 	if (state == State::CLIMB) {
@@ -669,14 +806,18 @@ TEST(SoaringLatch, OperatorCommandEndsEveryActiveState)
 {
 	const State states[] = {State::CLIMB, State::GLIDE, State::THERMAL};
 
+	const uint8_t kinds[] = {OPERATOR_MODE, OPERATOR_NAV};
+
 	for (State state : states) {
-		Rig rig;
-		toState(rig, state);
-		rig.in.operator_cmd = true;
-		rig.step(kDt);
-		rig.in.operator_cmd = false;
-		EXPECT_EQ(rig.out.state, State::INHIBIT) << (int)state;
-		EXPECT_EQ(rig.out.reason, REASON_OPERATOR) << (int)state;
+		for (uint8_t kind : kinds) {
+			Rig rig;
+			toState(rig, state);
+			rig.in.operator_cmd = kind;
+			rig.step(kDt);
+			rig.in.operator_cmd = 0;
+			EXPECT_EQ(rig.out.state, State::INHIBIT) << (int)state << " " << (int)kind;
+			EXPECT_EQ(rig.out.reason, REASON_OPERATOR) << (int)state << " " << (int)kind;
+		}
 	}
 }
 
@@ -684,9 +825,9 @@ TEST(SoaringLatch, HoldsUntilDisabledOrDisarmed)
 {
 	Rig rig;
 	rig.toGlide();
-	rig.in.operator_cmd = true;
+	rig.in.operator_cmd = OPERATOR_NAV;
 	rig.step(kDt);
-	rig.in.operator_cmd = false;
+	rig.in.operator_cmd = 0;
 	rig.step(5.f);
 	EXPECT_EQ(rig.out.reason, REASON_OPERATOR);
 	rig.in.allowed = false;
@@ -705,9 +846,9 @@ TEST(SoaringLatch, HoldsUntilDisabledOrDisarmed)
 	rig.step(2.1f);
 	EXPECT_EQ(rig.out.state, State::GLIDE);
 
-	rig.in.operator_cmd = true;
+	rig.in.operator_cmd = OPERATOR_MODE;
 	rig.step(kDt);
-	rig.in.operator_cmd = false;
+	rig.in.operator_cmd = 0;
 	rig.in.armed = false;
 	rig.step(kDt);
 	rig.in.armed = true;
@@ -746,16 +887,70 @@ TEST(SoaringLatch, ModeFailsafeAndMotorEndsLatch)
 	EXPECT_EQ(rig.out.state, State::GLIDE);
 }
 
-TEST(SoaringLatch, CommandBeforeSoaringStartsIsNotLatched)
+// One command in INHIBIT with the given reason, which clears 1 s later; returns the output 5 s after that.
+static Output afterCommandInInhibit(uint8_t reason, uint8_t kind, bool glide_first)
+{
+	Rig rig;
+
+	if (glide_first) {
+		rig.toGlide();
+	}
+
+	if (reason == REASON_WIND) {
+		rig.in.wind_valid = false;
+
+	} else if (reason != REASON_NONE) {
+		rig.in.allowed = false;
+		rig.in.inhibit_reason = reason;
+	}
+
+	rig.step(0.5f);
+	EXPECT_EQ(rig.out.state, State::INHIBIT);
+	rig.in.operator_cmd = kind;
+	rig.step(kDt);
+	rig.in.operator_cmd = 0;
+	rig.step(0.5f);
+	rig.in.wind_valid = true;
+	rig.in.allowed = true;
+	rig.in.inhibit_reason = REASON_NONE;
+	rig.step(5.f);
+	return rig.out;
+}
+
+TEST(SoaringLatch, CommandInAnInhibitOtherThanModeIsLatched)
+{
+	const uint8_t reasons[] = {REASON_WIND, REASON_BATTERY, REASON_AIRSPEED, REASON_HOME};
+
+	for (uint8_t reason : reasons) {
+		for (bool glide_first : {true, false}) {
+			const Output o = afterCommandInInhibit(reason, OPERATOR_NAV, glide_first);
+			EXPECT_EQ(o.state, State::INHIBIT) << (int)reason << glide_first;
+			EXPECT_EQ(o.reason, REASON_OPERATOR) << (int)reason << glide_first;
+		}
+	}
+}
+
+TEST(SoaringLatch, CommandBeforeSoaringStartsIsLatched)
 {
 	Rig rig;
 	rig.step(1.f);
 	ASSERT_EQ(rig.out.state, State::INHIBIT);
-	rig.in.operator_cmd = true;
+	ASSERT_EQ(rig.out.reason, REASON_NONE);
+	rig.in.operator_cmd = OPERATOR_NAV;
 	rig.step(kDt);
-	rig.in.operator_cmd = false;
-	rig.step(1.1f);
-	EXPECT_EQ(rig.out.state, State::GLIDE);
+	rig.in.operator_cmd = 0;
+	rig.step(5.f);
+	EXPECT_EQ(rig.out.state, State::INHIBIT);
+	EXPECT_EQ(rig.out.reason, REASON_OPERATOR);
+}
+
+TEST(SoaringLatch, ModeCommandOrModeInhibitIsNotLatched)
+{
+	// selecting Hold is a mode command, and a command outside Hold is not addressed to soaring
+	EXPECT_EQ(afterCommandInInhibit(REASON_MODE, OPERATOR_NAV, false).state, State::GLIDE);
+	EXPECT_EQ(afterCommandInInhibit(REASON_MODE, OPERATOR_MODE, false).state, State::GLIDE);
+	EXPECT_EQ(afterCommandInInhibit(REASON_WIND, OPERATOR_MODE, true).state, State::GLIDE);
+	EXPECT_EQ(afterCommandInInhibit(REASON_NONE, OPERATOR_MODE, false).state, State::GLIDE);
 }
 
 TEST(SoaringStates, WindInvalidInhibitsEveryState)
@@ -829,6 +1024,33 @@ TEST(SoaringRestart, WeakClimbIsNoMotorFailure)
 	EXPECT_EQ(rig.out.state, State::CLIMB);
 }
 
+// CLIMB holds cut + 5 m with the cut gate closed and flies through 1.5 m/s of sink for 3 s at this throttle.
+static uint8_t sinkInClimb(float throttle)
+{
+	Rig rig;
+	rig.p.alt_pat = 215.f;
+	rig.in.height = 200.f;
+	rig.step(2.1f);
+	EXPECT_EQ(rig.out.state, State::CLIMB);
+	rig.in.height = 255.f;
+	rig.climb_powered = 0.f;
+	rig.step(5.f);
+	rig.throttle = throttle;
+	rig.w = -1.5f;
+	rig.step(3.f);
+	rig.w = 0.f;
+	rig.step(1.f);
+	return rig.out.reason;
+}
+
+TEST(SoaringRestart, SinkAtPartThrottleIsNoMotorFailure)
+{
+	// FD_FW_TL_THR 0.7: below it the motor is not expected to add energy
+	EXPECT_EQ(sinkInClimb(0.5f), REASON_NONE);
+	EXPECT_EQ(sinkInClimb(0.69f), REASON_NONE);
+	EXPECT_EQ(sinkInClimb(0.7f), REASON_MOTOR);
+}
+
 TEST(SoaringRestart, MotorEndIsLatched)
 {
 	Rig rig;
@@ -860,6 +1082,8 @@ struct Circle {
 	float psi{0.f};
 	float t_latch{-1.f};
 	float t_active{-1.f};
+	int jitter_every{0};
+	int n_sample{0};
 
 	Circle()
 	{
@@ -909,7 +1133,8 @@ struct Circle {
 			in.vz = tableSinkTurn(v, fabsf(atanf(v * rate / kG)));
 			in.cas = in.tas = v + pitot_add;
 			in.roll = atanf(v * rate / kG);
-			in.yaw = psi;
+			n_sample++;
+			in.yaw = (jitter_every > 0 && n_sample % jitter_every == 0) ? psi - 2.f * rate * kDt : psi;
 			in.wind_e = wind_e;
 			soar.update(in, p, out);
 
@@ -990,6 +1215,64 @@ TEST(SoaringTurnCheck, NoStartBeforeTheFirstCleanTurn)
 	EXPECT_LT(c.t_active, 0.f);
 	c.fly(1.5f);
 	EXPECT_GT(c.t_active, 29.f);
+}
+
+TEST(SoaringTurnCheck, PitotDropoutClearsTheVerdict)
+{
+	// the Rig circles 60 m at 14 m/s: one turn takes 26.9 s; the clean turn of its start ended at 27.0 s
+	Rig battery;
+	battery.step(1.f);
+	battery.in.allowed = false;
+	battery.in.inhibit_reason = REASON_BATTERY;
+	battery.step(1.5f);
+	battery.in.allowed = true;
+	battery.step(2.1f);
+	EXPECT_EQ(battery.out.state, State::GLIDE);
+
+	Rig pitot;
+	pitot.step(1.f);
+	pitot.in.allowed = false;
+	pitot.in.inhibit_reason = REASON_AIRSPEED;
+	pitot.step(1.5f);
+	pitot.in.allowed = true;
+	pitot.step(20.f);
+	EXPECT_EQ(pitot.out.state, State::INHIBIT);
+	EXPECT_EQ(pitot.out.reason, REASON_NONE);
+	// next verdict at 53.9 s, then 2 s good
+	pitot.step(10.f);
+	EXPECT_EQ(pitot.out.state, State::GLIDE);
+}
+
+TEST(SoaringTurnCheck, SingleReversedYawSamplesKeepTheTurn)
+{
+	// every 25th yaw sample reads 2 steps back, as turbulence does: the turn still ends after 360 deg
+	Circle c;
+	c.jitter_every = 25;
+	c.fly(15.f);
+	EXPECT_FALSE(std::isnan(c.out.aspd_excess));
+	EXPECT_NEAR(c.out.aspd_excess, 0.f, 0.2f);
+	c.fly(2.5f);
+	EXPECT_GT(c.t_active, 0.f);
+}
+
+TEST(SoaringTurnCheck, ReversalOf30DegRestartsTheTurn)
+{
+	// 340 deg one way, a reversal, then 80 deg on: a kept turn reaches 360 deg net, a restarted one 80 deg at most
+	// [deg/s] the default circle: 15.84 m/s on 36.5 m
+	const float deg = 15.84f / 36.5f / kDeg;
+	Circle keep;
+	keep.wind_e = 0.f;
+	keep.fly(340.f / deg);
+	keep.fly(25.f / deg, -1.f);
+	keep.fly(80.f / deg);
+	EXPECT_FALSE(std::isnan(keep.out.aspd_excess));
+
+	Circle restart;
+	restart.wind_e = 0.f;
+	restart.fly(340.f / deg);
+	restart.fly(35.f / deg, -1.f);
+	restart.fly(80.f / deg);
+	EXPECT_TRUE(std::isnan(restart.out.aspd_excess));
 }
 
 TEST(SoaringTurnCheck, STurnsGiveNoVerdict)

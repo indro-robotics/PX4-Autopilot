@@ -72,6 +72,11 @@ enum Reason : uint8_t {
 	REASON_CONFIG
 };
 
+enum Operator : uint8_t {
+	OPERATOR_MODE = 1,	// DO_SET_MODE
+	OPERATOR_NAV = 2	// DO_REPOSITION, DO_CHANGE_ALTITUDE, DO_ORBIT, DO_CHANGE_SPEED
+};
+
 struct Params {
 	bool enabled{false};
 	float alt_min{100.f};		// [m] above home
@@ -95,6 +100,7 @@ struct Params {
 	float r{0.5f};			// [m/s]
 	float dist_ahead{15.f};		// [m]
 	float airspd_min{14.f};		// [m/s] FW_AIRSPD_MIN
+	float airspd_trim{18.f};	// [m/s] FW_AIRSPD_TRIM
 	float airspd_max{23.f};		// [m/s] FW_AIRSPD_MAX
 	float gf_max_ver{0.f};		// [m] GF_MAX_VER_DIST, 0 off
 	float gf_max_hor{0.f};		// [m] GF_MAX_HOR_DIST, 0 off
@@ -105,7 +111,7 @@ struct Input {
 	uint64_t time_us{0};
 	bool armed{false};
 	bool allowed{false};
-	bool operator_cmd{false};	// operator command seen since the last update
+	uint8_t operator_cmd{0};	// Operator bits seen since the last update
 	uint8_t inhibit_reason{REASON_MODE};
 	float x{0.f};			// [m] local north
 	float y{0.f};			// [m] local east
@@ -118,6 +124,7 @@ struct Input {
 	float roll{0.f};		// [rad]
 	float yaw{0.f};			// [rad]
 	float accel_x{0.f};		// [m/s2] kinematic acceleration along the body x axis
+	float throttle{0.f};		// TECS throttle setpoint
 	float wind_n{0.f};		// [m/s]
 	float wind_e{0.f};		// [m/s]
 	bool wind_valid{false};
@@ -133,6 +140,7 @@ struct Output {
 	uint8_t reason{REASON_NONE};
 
 	float alt_sp{0.f};		// [m] above home, CLIMB
+	float speed_weight{NAN};	// TECS speed weight, NAN keeps the stock value
 	float airspeed_sp{0.f};		// [m/s] CAS
 	float loiter_radius{0.f};	// [m]
 	bool loiter_ccw{false};		// THERMAL
@@ -181,7 +189,7 @@ private:
 	void setState(State state, uint8_t reason, float height);
 	void enterThermal(const Input &in, const Params &p, float climb_expected);
 	void thermalStep(const Input &in, const Params &p, float dt, float netto, float te, float radius);
-	bool turnCheck(const Input &in, float tas, float roll);
+	bool turnCheck(const Input &in, float tas);
 
 	State _state{State::OFF};
 	uint8_t _reason{REASON_NONE};
@@ -193,6 +201,7 @@ private:
 	float _restart_low_s{0.f};
 	uint8_t _latch{REASON_NONE};
 	bool _speed_hold{false};
+	float _climb_sp{0.f};
 
 	float _climb_f{0.f};
 	float _tas_prev{0.f};
@@ -212,6 +221,7 @@ private:
 
 	float _yaw_prev{NAN};
 	float _turn_net{0.f};		// [rad] signed heading change
+	float _turn_peak{0.f};		// [rad] largest absolute heading change of this turn
 	float _turn_sum[5] {};		// weight, weighted TAS, v north, v east, v.v
 	float _aspd_excess{NAN};
 	float _aspd_turn{NAN};

@@ -46,8 +46,12 @@ static constexpr float kTwoPi = 6.2831853f;
 static constexpr float kAspdExcess = 2.5f;	// [m/s] pitot TAS above the GPS turn estimate that ends soaring
 // the restart check mirrors the FD_FW_TL_THR, FD_FW_TL_RATE and FD_FW_TL_TIME defaults: 2 s to throttle 0.7, -0.8 m/s, 2 s
 static constexpr float kRestartGraceS = 2.f;
+static constexpr float kRestartThrottle = 0.7f;
 static constexpr float kRestartRate = -0.8f;
 static constexpr float kRestartS = 2.f;
+// a single reversed yaw sample in turbulence must not restart the turn
+static constexpr float kTurnReverse = 30.f * kDeg;
+static constexpr float kCutBand = 50.f;	// [m] under SOAR_ALT_CUT where CLIMB flies FW_AIRSPD_TRIM
 
 static float clampf(float v, float lo, float hi)
 {
@@ -218,7 +222,7 @@ void Soaring::thermalStep(const Input &in, const Params &p, float dt, float nett
 	_climb_avg = lpf(_climb_avg, te, dt, kTwoPi * radius / fmaxf(in.tas, 5.f));
 }
 
-bool Soaring::turnCheck(const Input &in, float tas, float roll)
+bool Soaring::turnCheck(const Input &in, float tas)
 {
 	bool evaluated = false;
 
@@ -239,8 +243,9 @@ bool Soaring::turnCheck(const Input &in, float tas, float roll)
 	const bool step = !std::isfinite(d) || fabsf(d) > 0.5f;
 
 	// a reversal restarts the turn since S-turns cover headings unevenly; a step is an estimator yaw reset
-	if (evaluated || !in.armed || step || (fabsf(roll) > 5.f * kDeg && d * _turn_net < 0.f)) {
+	if (evaluated || !in.armed || step || _turn_peak - fabsf(_turn_net + d) >= kTurnReverse) {
 		_turn_net = 0.f;
+		_turn_peak = 0.f;
 
 		for (int i = 0; i < 5; i++) {
 			_turn_sum[i] = 0.f;
@@ -256,6 +261,7 @@ bool Soaring::turnCheck(const Input &in, float tas, float roll)
 	const float vn = finite(in.vn);
 	const float ve = finite(in.ve);
 	_turn_net += d;
+	_turn_peak = fmaxf(_turn_peak, fabsf(_turn_net));
 	_turn_sum[0] += w;
 	_turn_sum[1] += w * tas;
 	_turn_sum[2] += w * vn;
@@ -311,31 +317,28 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 		_latch = REASON_NONE;
 	}
 
-	if (!in.armed) {
-		_turn_ok = false;
-	}
-
-	if (turnCheck(in, tas, roll) && p.enabled && _aspd_excess > kAspdExcess && _latch == REASON_NONE) {
+	if (turnCheck(in, tas) && p.enabled && _aspd_excess > kAspdExcess && _latch == REASON_NONE) {
 		_latch = REASON_AIRSPEED;
 	}
 
+	// a verdict from before a pitot dropout says nothing about the pitot after it
+	if (!in.armed || (!in.allowed && in.inhibit_reason == REASON_AIRSPEED)) {
+		_turn_ok = false;
+	}
+
+	const State prev = _state;
 	_state_s += dt;
 	_glide_bar_s = fmaxf(_glide_bar_s - dt, 0.f);
 	const bool unpowered = _state == State::GLIDE || _state == State::THERMAL;
 	_aspd_low_s = (unpowered && cas < cas_min) ? _aspd_low_s + dt : 0.f;
 	const bool aspd_low = _aspd_low_s >= 1.f;
 	const bool active = _state >= State::CLIMB;
-	_restart_low_s = (_state == State::CLIMB && _state_s >= kRestartGraceS && te < kRestartRate) ? _restart_low_s + dt : 0.f;
+	_restart_low_s = (_state == State::CLIMB && _state_s >= kRestartGraceS && te < kRestartRate
+			  && in.throttle >= kRestartThrottle) ? _restart_low_s + dt : 0.f;
 
 	uint8_t inhibit = REASON_NONE;
 
-	if (_latch != REASON_NONE) {
-		inhibit = _latch;
-
-	} else if (in.operator_cmd && active) {
-		inhibit = REASON_OPERATOR;
-
-	} else if (_restart_low_s >= kRestartS) {
+	if (_restart_low_s >= kRestartS) {
 		// a restart that adds no energy ends soaring and leaves the motor failure to the stock failsafe
 		inhibit = REASON_MOTOR;
 
@@ -352,8 +355,18 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 		inhibit = REASON_RADIUS;
 	}
 
-	if (p.enabled && active && (inhibit == REASON_OPERATOR || inhibit == REASON_MODE || inhibit == REASON_FAILSAFE
-				    || inhibit == REASON_MOTOR)) {
+	// a mode command is how Hold is selected; any other command overrides soaring that waits on an inhibit
+	const bool waiting = _state == State::INHIBIT && inhibit != REASON_MODE;
+
+	if (_latch != REASON_NONE) {
+		inhibit = _latch;
+
+	} else if ((active && in.operator_cmd) || (waiting && (in.operator_cmd & OPERATOR_NAV))) {
+		inhibit = REASON_OPERATOR;
+	}
+
+	if (p.enabled && (inhibit == REASON_OPERATOR || (active && (inhibit == REASON_MODE || inhibit == REASON_FAILSAFE
+			  || inhibit == REASON_MOTOR)))) {
 		_latch = inhibit;
 	}
 
@@ -428,14 +441,24 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 		}
 	}
 
+	// latched so that lift met in CLIMB never carries the setpoint toward the fence
+	if (_state == State::CLIMB && prev != State::CLIMB) {
+		_climb_sp = fminf(fmaxf(p.alt_cut + 5.f, in.height), alt_max);
+	}
+
 	const bool thermal = _state == State::THERMAL;
 	// held down to the ceiling less 20 m so the zoom on slowing (23 to 14 m/s returns 17 m) stays under it
 	_speed_hold = in.height > alt_max || (_speed_hold && in.height >= alt_max - 20.f);
 
 	out.state = _state;
 	out.reason = _reason;
-	out.alt_sp = fmaxf(p.alt_cut + 5.f, in.height);
-	out.airspeed_sp = thermal ? vth : ((_state == State::GLIDE && _speed_hold) ? p.airspd_max : cruise_cas);
+	out.alt_sp = _climb_sp;
+	// a dead motor in CLIMB then costs height, not airspeed
+	out.speed_weight = _state == State::CLIMB ? 2.f : NAN;
+	// zero thrust at the cut decelerates by g sin(path angle) plus drag: trim speed flattens the path and adds speed in hand
+	const bool cut_near = _state == State::CLIMB && in.height >= p.alt_cut - kCutBand;
+	out.airspeed_sp = thermal ? vth : ((_state == State::GLIDE && _speed_hold) ? p.airspd_max
+					   : (cut_near ? fminf(p.airspd_trim, p.airspd_max) : cruise_cas));
 	out.loiter_radius = thermal ? radius : cruise_rad;
 	out.loiter_ccw = _ccw;
 	out.centre_x = _cx;

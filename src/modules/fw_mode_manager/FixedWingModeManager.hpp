@@ -102,6 +102,7 @@
 #include <uORB/topics/failsafe_flags.h>
 #include <uORB/topics/home_position.h>
 #include <uORB/topics/soaring_status.h>
+#include <uORB/topics/tecs_status.h>
 #endif // CONFIG_FW_SOARING
 
 using namespace launchdetection;
@@ -421,6 +422,7 @@ private:
 #ifdef CONFIG_FW_SOARING
 	uORB::Subscription _home_position_sub{ORB_ID(home_position)};
 	uORB::Subscription _failsafe_flags_sub{ORB_ID(failsafe_flags)};
+	uORB::Subscription _tecs_status_sub{ORB_ID(tecs_status)};
 	uORB::Publication<soaring_status_s> _soaring_status_pub{ORB_ID(soaring_status)};
 	uORB::Publication<debug_key_value_s> _debug_key_value_pub{ORB_ID(debug_key_value)};
 
@@ -432,7 +434,8 @@ private:
 	float _airspeed_tas{NAN};
 	hrt_abstime _time_soar_airspeed{0};
 	float _roll{0.f};
-	bool _soar_operator_cmd{false};
+	uint8_t _soar_operator_cmd{0};
+	float _soar_throttle{0.f};
 	int32_t _soar_act_fail_act{0};
 	hrt_abstime _time_soar_status{0};
 	hrt_abstime _time_soar_debug{0};

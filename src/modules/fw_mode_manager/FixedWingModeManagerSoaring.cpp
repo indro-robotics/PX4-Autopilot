@@ -86,6 +86,7 @@ FixedWingModeManager::soar_params_update()
 	param_get(param_handle(px4::params::COM_ACT_FAIL_ACT), &_soar_act_fail_act);
 	_soar_p.thml_bank = math::radians(math::min(_soar_p.thml_bank, _param_fw_r_lim.get() - 15.f));
 	_soar_p.airspd_min = _param_fw_airspd_min.get();
+	_soar_p.airspd_trim = _param_fw_airspd_trim.get();
 	_soar_p.airspd_max = _param_fw_airspd_max.get();
 	_soar_p.nav_loiter_rad = _param_nav_loiter_rad.get();
 }
@@ -99,6 +100,12 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 
 	if (_failsafe_flags_sub.update(&failsafe_flags)) {
 		_battery_warning = failsafe_flags.battery_warning;
+	}
+
+	tecs_status_s tecs_status;
+
+	if (_tecs_status_sub.update(&tecs_status)) {
+		_soar_throttle = tecs_status.throttle_sp;
 	}
 
 	const position_setpoint_s &cur = _pos_sp_triplet.current;
@@ -140,7 +147,7 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 	in.armed = _control_mode.flag_armed;
 	in.allowed = in.inhibit_reason == soaring::REASON_NONE;
 	in.operator_cmd = _soar_operator_cmd;
-	_soar_operator_cmd = false;
+	_soar_operator_cmd = 0;
 	in.x = _local_pos.x;
 	in.y = _local_pos.y;
 	in.vn = _local_pos.vx;
@@ -152,6 +159,7 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 	in.roll = _roll;
 	in.yaw = _yaw;
 	in.accel_x = _body_acceleration_x;
+	in.throttle = _soar_throttle;
 	in.wind_n = _wind_vel(0);
 	in.wind_e = _wind_vel(1);
 	in.wind_valid = _wind_valid;
@@ -237,6 +245,12 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 		return;
 	}
 
+	if (new_inhibit && o.reason == soaring::REASON_OPERATOR) {
+		events::send(events::ID("soaring_off_operator"), events::Log::Warning,
+			     "soaring off  operator command. SOAR_EN 0 then 1 restarts");
+		return;
+	}
+
 	if (new_inhibit && o.reason == soaring::REASON_BAND) {
 		if (o.alt_max < o.alt_cut + 20.f) {
 			events::send<float, float>(events::ID("soaring_refused_ceiling"), events::Log::Warning,
@@ -293,7 +307,7 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 
 	if (!was_on && on) {
 		events::send<float, float, float>(events::ID("soaring_on"), events::Log::Info,
-						  "soaring on  band {1:.0} to {2:.0} m, ceiling {3:.0} m", o.alt_min, o.alt_cut, o.alt_max);
+						  "soaring on  band {1:.0} to {2:.0} m, ceiling {3:.0} m", o.alt_floor, o.alt_cut, o.alt_max);
 
 	} else if (was_on && !on) {
 		switch (o.reason) {
@@ -319,11 +333,6 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 
 		case soaring::REASON_RADIUS:
 			events::send(events::ID("soaring_off_radius"), events::Log::Info, "soaring off  radius");
-			break;
-
-		case soaring::REASON_OPERATOR:
-			events::send(events::ID("soaring_off_operator"), events::Log::Warning,
-				     "soaring off  operator command. SOAR_EN 0 then 1 restarts");
 			break;
 
 		case soaring::REASON_MOTOR:
@@ -360,6 +369,7 @@ FixedWingModeManager::soar_apply(position_setpoint_s &current_sp)
 {
 	if (_soar_out.state == SoarState::CLIMB) {
 		current_sp.alt = _home.alt + _soar_out.alt_sp;
+		_ctrl_configuration_handler.setSpeedWeight(_soar_out.speed_weight);
 
 	} else if (_soar_out.state == SoarState::GLIDE) {
 		current_sp.alt = _current_altitude;
