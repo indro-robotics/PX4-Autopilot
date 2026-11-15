@@ -64,6 +64,8 @@ param set-default NAV_DLL_ACT 2
 # Takeoff holds at 45 m and Return at 30 m; the fence sits at 60 m.
 # A landing abort climbs this far above the height it starts from.
 param set-default MIS_LND_ABRT_ALT 10
+# Arming writes the landing pattern from home and the launch heading.
+param set-default MIS_LP_EN 1
 param set-default MIS_TAKEOFF_ALT 45
 param set-default NAV_LOITER_RAD 60
 param set-default RTL_DESCEND_ALT 30
@@ -100,6 +102,8 @@ param set-default FW_LAUN_MOT_DEL 0.5
 param set-default FW_THR_IDLE 0.0
 
 # LAND
+# Steepest landing slope: a landing pattern steeper than this is rejected.
+param set-default FW_LND_ANG 7.0
 param set-default FW_LND_FL_PMAX 15.0
 param set-default FW_LND_FL_TIME 0.5
 param set-default FW_LND_FLALT 1.0

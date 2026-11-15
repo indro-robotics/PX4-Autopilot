@@ -182,6 +182,12 @@ public:
 	float get_default_loiter_rad() { return fabsf(_param_nav_loiter_rad.get()); }
 	bool get_default_loiter_CCW() { return _param_nav_loiter_rad.get() < -FLT_EPSILON; }
 
+	bool landing_pattern_enabled() const
+	{
+		return _param_mis_lp_en.get() == 1 && !_vstatus.is_vtol
+		       && _vstatus.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING;
+	}
+
 	/**
 	 * Returns the default acceptance radius defined by the parameter
 	 */
@@ -367,6 +373,15 @@ private:
 	bool 		_pos_sp_triplet_published_invalid_once{false};	/**< flags if position SP triplet has been published once to UORB */
 	bool		_mission_result_updated{false};			/**< flags if mission result has seen an update */
 
+	bool		_lp_armed{false};
+	uint32_t	_lp_mission_id{0};
+	uint32_t	_land_mission_id{0};
+	bool		_land_via_mission{false};
+	bool		_land_failsafe{false};
+	uint8_t		_land_intention{vehicle_status_s::NAVIGATION_STATE_MAX};
+	bool		_hold_entered{false};
+	bool		_hold_keep{false};
+
 	Mission		_mission;			/**< class that handles the missions */
 	Loiter		_loiter;			/**< class that handles loiter */
 	Takeoff		_takeoff;			/**< class for handling takeoff commands */
@@ -422,6 +437,12 @@ private:
 
 	bool geofence_allows_position(const vehicle_global_position_s &pos);
 
+	void landingPatternItems(float heading, mission_item_s items[3]);
+
+	void landingPatternWrite(float heading, bool ready);
+
+	bool landingPatternFlying();
+
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::NAV_LOITER_RAD>)   _param_nav_loiter_rad,	/**< loiter radius for fixedwing */
 		(ParamFloat<px4::params::NAV_ACC_RAD>)      _param_nav_acc_rad,		/**< acceptance for takeoff */
@@ -443,6 +464,11 @@ private:
 		(ParamFloat<px4::params::MIS_YAW_TMT>)        _param_mis_yaw_tmt,
 		(ParamFloat<px4::params::MIS_YAW_ERR>)        _param_mis_yaw_err,
 		(ParamInt<px4::params::MIS_LND_ABRT_ALT>)     _param_mis_lnd_abrt_alt,
-		(ParamFloat<px4::params::MIS_COMMAND_TOUT>) _param_mis_command_tout
+		(ParamFloat<px4::params::MIS_COMMAND_TOUT>) _param_mis_command_tout,
+		(ParamInt<px4::params::MIS_LP_EN>)            _param_mis_lp_en,
+		(ParamFloat<px4::params::MIS_LP_AHEAD>)       _param_mis_lp_ahead,
+		(ParamFloat<px4::params::MIS_LP_OFFSET>)      _param_mis_lp_offset,
+		(ParamFloat<px4::params::MIS_LP_DIST>)        _param_mis_lp_dist,
+		(ParamFloat<px4::params::MIS_LP_ALT>)         _param_mis_lp_alt
 	)
 };

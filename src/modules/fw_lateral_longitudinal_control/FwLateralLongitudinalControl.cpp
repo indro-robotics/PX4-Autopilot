@@ -835,6 +835,9 @@ void FwLateralLongitudinalControl::updateLongitudinalControlConfiguration(const 
 	} else {
 		_long_configuration.speed_weight = _param_t_spdweight.get();
 	}
+
+	_long_configuration.disable_underspeed_protection = configuration_in.disable_underspeed_protection;
+	_long_configuration.enforce_low_height_condition = configuration_in.enforce_low_height_condition;
 }
 
 float FwLateralLongitudinalControl::getLoadFactor() const

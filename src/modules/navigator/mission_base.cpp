@@ -705,6 +705,17 @@ void MissionBase::handleLanding(WorkItemType &new_work_item_type, mission_item_s
 			_navigator->activate_set_gimbal_neutral_timer(hrt_absolute_time());
 
 		} else {
+			// A fixed-wing landing is straight only from a finite previous setpoint, which Return gets only from a position item of the landing sequence.
+			if (_navigator->landing_pattern_enabled()
+			    && pos_sp_triplet->current.type != position_setpoint_s::SETPOINT_TYPE_LAND) {
+				int32_t approach_index;
+				size_t approach_found;
+				getPreviousPositionItems(_mission.current_seq, &approach_index, approach_found, 1);
+
+				if (approach_found == 1 && approach_index >= _mission.land_start_index) {
+					pos_sp_triplet->previous = pos_sp_triplet->current;
+				}
+			}
 
 			if (_mission_item.land_precision > 0 && _mission_item.land_precision < 3) {
 				new_work_item_type = WorkItemType::WORK_ITEM_TYPE_PRECISION_LAND;

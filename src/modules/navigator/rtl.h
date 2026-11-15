@@ -90,6 +90,8 @@ public:
 
 	bool isLanding();
 
+	bool flysMissionLanding() const { return _rtl_type == RtlType::RTL_DIRECT_MISSION_LAND; }
+
 private:
 	enum class DestinationType {
 		DESTINATION_TYPE_HOME,

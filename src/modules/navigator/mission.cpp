@@ -59,6 +59,7 @@
 #include <uORB/topics/mission_result.h>
 #include <drivers/drv_hrt.h>
 #include <px4_platform_common/events.h>
+#include <crc32.h>
 
 using namespace time_literals;
 
@@ -491,4 +492,77 @@ Mission::save_mission_state()
 			PX4_ERR("Can't save mission state");
 		}
 	}
+}
+
+uint32_t
+Mission::writeLandingPattern(mission_item_s items[3], float heading, bool ready)
+{
+	if (_mission.timestamp == 0) {
+		return LANDING_PATTERN_FAILED;
+	}
+
+	if (_mission.count > 0) {
+		if (_mission.land_start_index != 0 || _mission.land_index != _mission.count - 1) {
+			return 0;
+		}
+
+		const home_position_s &home = *_navigator->get_home_position();
+		const mission_result_s &result = *_navigator->get_mission_result();
+		const dm_item_t id = static_cast<dm_item_t>(_mission.mission_dataman_id);
+		mission_item_s land, approach;
+
+		// The companion owns the landing direction, so a pattern on the reversed launch line fits too.
+		const bool fits = _mission.land_index > 0
+				  && _dataman_client.readSync(id, _mission.land_index, reinterpret_cast<uint8_t *>(&land), sizeof(land), 500_ms)
+				  && _dataman_client.readSync(id, _mission.land_index - 1, reinterpret_cast<uint8_t *>(&approach), sizeof(approach),
+						  500_ms)
+				  && land.origin != ORIGIN_ONBOARD && item_contains_position(approach)
+				  && get_distance_to_next_waypoint(home.lat, home.lon, land.lat, land.lon) <= 200.f
+				  && fabsf(matrix::wrap_pi(2.f * (get_bearing_to_next_waypoint(approach.lat, approach.lon, land.lat, land.lon) - heading)))
+				  <= math::radians(120.f)
+				  && (result.mission_id != _mission.mission_id || result.valid);
+
+		if (fits) {
+			return 0;
+		}
+	}
+
+	if (!ready) {
+		return LANDING_PATTERN_FAILED;
+	}
+
+	const dm_item_t slot = (_mission.mission_dataman_id == DM_KEY_WAYPOINTS_OFFBOARD_0) ? DM_KEY_WAYPOINTS_OFFBOARD_1 :
+			       DM_KEY_WAYPOINTS_OFFBOARD_0;
+
+	for (int i = 0; i < 3; i++) {
+		if (!_dataman_client.writeSync(slot, i, reinterpret_cast<uint8_t *>(&items[i]), sizeof(mission_item_s), 500_ms)) {
+			return LANDING_PATTERN_FAILED;
+		}
+	}
+
+	mission_s mission = _mission;
+	mission.timestamp = hrt_absolute_time();
+	mission.mission_dataman_id = slot;
+	mission.count = 3;
+	mission.current_seq = 0;
+	mission.land_start_index = 0;
+	mission.land_index = 2;
+
+	// Id 0 marks Mission mode unavailable, an unchanged id is not reloaded, and LANDING_PATTERN_FAILED is no id.
+	mission.mission_id = (crc32part(reinterpret_cast<const uint8_t *>(items), 3 * sizeof(mission_item_s), 0) >> 1) + 1;
+
+	if (mission.mission_id == _mission.mission_id) {
+		mission.mission_id++;
+	}
+
+	if (!_dataman_client.writeSync(DM_KEY_MISSION_STATE, 0, reinterpret_cast<uint8_t *>(&mission), sizeof(mission_s),
+				       500_ms)) {
+		return LANDING_PATTERN_FAILED;
+	}
+
+	_mission_pub.publish(mission);
+	_mission = mission;
+	onMissionUpdate(true);
+	_is_current_planned_mission_item_valid = isMissionValid();
+	return mission.mission_id;
 }
