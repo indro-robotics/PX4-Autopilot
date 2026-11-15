@@ -32,8 +32,17 @@
 ############################################################################
 
 px4_add_library(soaring
+	ExtendedKalmanFilter.cpp
+	ExtendedKalmanFilter.hpp
 	Soaring.cpp
 	Soaring.hpp
+	SoaringController.cpp
+	SoaringController.hpp
+	SpeedToFly.cpp
+	SpeedToFly.hpp
+	Variometer.cpp
+	Variometer.hpp
 )
 
 px4_add_unit_gtest(SRC SoaringTest.cpp LINKLIBS soaring)
+px4_add_unit_gtest(SRC SoaringControllerTest.cpp LINKLIBS soaring)
