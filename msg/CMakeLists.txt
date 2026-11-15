@@ -213,6 +213,7 @@ set(msg_files
 	TakeoffStatus.msg
 	TaskStackInfo.msg
 	TecsStatus.msg
+	TerrainFollowStatus.msg
 	TelemetryStatus.msg
 	TiltrotorExtraControls.msg
 	TimesyncStatus.msg

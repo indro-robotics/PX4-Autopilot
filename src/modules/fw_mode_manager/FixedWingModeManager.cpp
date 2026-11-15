@@ -35,6 +35,7 @@
 #include "flare_law.hpp"
 
 #include <px4_platform_common/events.h>
+#include <lib/range_select/RangeSelect.hpp>
 #include <uORB/topics/longitudinal_control_configuration.h>
 
 using math::constrain;
@@ -90,6 +91,9 @@ FixedWingModeManager::init()
 		return false;
 	}
 
+	// the logger records an optional topic only when it exists at logger start
+	_terrain_follow_status_pub.advertise();
+
 	return true;
 }
 
@@ -119,6 +123,8 @@ FixedWingModeManager::vehicle_control_mode_poll()
 			if (!was_armed && _control_mode.flag_armed) {
 				reset_takeoff_state();
 				reset_landing_state();
+				_terrain_follower.reset();
+				_tf_loss_count = 0;
 			}
 		}
 	}
@@ -250,6 +256,7 @@ FixedWingModeManager::vehicle_attitude_poll()
 		const Eulerf euler_angles(R);
 		_yaw = euler_angles(2);
 		_pitch = euler_angles(1);
+		_cos_tilt = R(2, 2);
 
 		const Vector3f body_acceleration = R.transpose() * Vector3f{_local_pos.ax, _local_pos.ay, _local_pos.az};
 		_body_acceleration_x = body_acceleration(0);
@@ -723,7 +730,7 @@ FixedWingModeManager::handle_setpoint_type(const position_setpoint_s &pos_sp_cur
 		// Detect if system has switchted into a Loiter before (check _position_sp_type), and in that
 		// case remove the dist_xy check (not switch out of Loiter until altitude is reached).
 		if ((!_vehicle_status.in_transition_mode) && (dist >= 0.f)
-		    && (dist_z > acc_rad_z)
+		    && (dist_z > acc_rad_z) && !TerrainFollower::ownsAltitude(_tf_state)
 		    && (dist_xy < acc_rad || _position_sp_type == position_setpoint_s::SETPOINT_TYPE_LOITER)) {
 
 			// SETPOINT_TYPE_POSITION -> SETPOINT_TYPE_LOITER
@@ -776,7 +783,7 @@ FixedWingModeManager::control_auto_position(const float control_interval, const 
 		}
 	}
 
-	const fixed_wing_longitudinal_setpoint_s fw_longitudinal_control_sp = {
+	fixed_wing_longitudinal_setpoint_s fw_longitudinal_control_sp = {
 		.timestamp = hrt_absolute_time(),
 		.altitude = position_sp_alt,
 		.height_rate = NAN,
@@ -785,6 +792,7 @@ FixedWingModeManager::control_auto_position(const float control_interval, const 
 		.throttle_direct = NAN
 	};
 
+	applyTerrainFollow(control_interval, position_sp_alt, &fw_longitudinal_control_sp, false);
 	_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
 	float throttle_min = NAN;
@@ -937,7 +945,7 @@ FixedWingModeManager::control_auto_loiter(const float control_interval, const Ve
 		enforce_low_height = true;
 	}
 
-	const fixed_wing_longitudinal_setpoint_s fw_longitudinal_control_sp = {
+	fixed_wing_longitudinal_setpoint_s fw_longitudinal_control_sp = {
 		.timestamp = hrt_absolute_time(),
 		.altitude = pos_sp_curr.alt,
 		.height_rate = NAN,
@@ -945,6 +953,8 @@ FixedWingModeManager::control_auto_loiter(const float control_interval, const Ve
 		.pitch_direct = NAN,
 		.throttle_direct = NAN
 	};
+
+	applyTerrainFollow(control_interval, pos_sp_curr.alt, &fw_longitudinal_control_sp, close_to_circle);
 
 	_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
@@ -2242,6 +2252,8 @@ FixedWingModeManager::Run()
 		int8_t old_landing_gear_position = _new_landing_gear_position;
 		_new_landing_gear_position = landing_gear_s::GEAR_KEEP; // is overwritten in Takeoff and Land
 
+		_tf_called = false;
+
 		switch (_control_mode_current) {
 		case FW_POSCTRL_MODE_AUTO: {
 				control_auto(control_interval, curr_pos, ground_speed, _pos_sp_triplet.previous, _pos_sp_triplet.current,
@@ -2308,6 +2320,10 @@ FixedWingModeManager::Run()
 				control_backtransition_heading_hold();
 				break;
 			}
+		}
+
+		if (!_tf_called) {
+			applyTerrainFollow(control_interval, NAN, nullptr, false);
 		}
 
 		_launch_aborted = _control_mode.flag_armed && (_launch_aborted || _launchDetector.aborted());
@@ -2464,6 +2480,202 @@ float FixedWingModeManager::flareEntryPitch(const hrt_abstime &now)
 	const bool valid = _tecs_status_sub.copy(&tecs_status);
 
 	return flare_law::entryPitch(valid, now, tecs_status.timestamp, tecs_status.pitch_sp_rad, _pitch);
+}
+
+void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_alt,
+		fixed_wing_longitudinal_setpoint_s *sp, const bool close_to_circle)
+{
+	_tf_called = true;
+	const hrt_abstime now = hrt_absolute_time();
+
+	mission_s mission;
+
+	if (_mission_sub.update(&mission)) {
+		_mission_land_start = mission.land_start_index;
+		_mission_seq = mission.current_seq;
+		_mission_time = mission.timestamp;
+	}
+
+	int n = 0;
+
+	for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
+		if (_distance_sensor_subs[i].copy(&_range_samples[n])) {
+			if (!_range_stuck[i].live(_range_samples[n].current_distance, _current_altitude, _range_samples[n].timestamp)) {
+				_range_samples[n].timestamp = 0;
+			}
+
+			n++;
+		}
+	}
+
+	const range_select::Selection sel = range_select::selectDownwardRange(_range_samples, n,
+					    (now > 250_ms) ? now - 250_ms : 0, _range_long_floor, true);
+	const bool range_on = sel.count > 0 && _param_ekf2_rng_ctrl.get() != 0;
+	const float hagl_raw = range_on ? TerrainFollower::rawHagl(sel.distance, _cos_tilt) : NAN;
+
+	TerrainFollower::Nav nav = TerrainFollower::NAV_OTHER;
+
+	if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER) {
+		nav = TerrainFollower::NAV_HOLD;
+
+	} else if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION) {
+		nav = TerrainFollower::NAV_MISSION;
+
+	} else if (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_RTL) {
+		nav = TerrainFollower::NAV_RETURN;
+	}
+
+	const int32_t en = _param_fw_tf_en.get();
+	const bool airborne = _control_mode.flag_armed && !_landed;
+	const bool latched = _terrain_follower.latchFollow(en & 3, airborne);
+
+	if (airborne && !_tf_airborne && (en & 3)) {
+		events::send(events::ID("fw_terrain_follow_wait_switch"), events::Log::Info, "Terrain follow waits for a switch in flight");
+	}
+
+	_tf_airborne = airborne;
+
+	rtl_status_s rtl_status;
+
+	if (_rtl_status_sub.update(&rtl_status)) {
+		_rtl_type = rtl_status.rtl_type;
+	}
+
+	// a Return to home or a rally point leaves the mission index where the mission stopped
+	const bool mission_landing_return = nav == TerrainFollower::NAV_RETURN
+					    && (_rtl_type == rtl_status_s::RTL_STATUS_TYPE_DIRECT_MISSION_LAND
+						|| _rtl_type == rtl_status_s::RTL_STATUS_TYPE_FOLLOW_MISSION);
+	const bool past_land_start = (nav == TerrainFollower::NAV_MISSION || mission_landing_return)
+				     && _mission_land_start >= 0 && _mission_seq > _mission_land_start;
+	const bool approach = _tf_approach.update(past_land_start, _pos_sp_triplet.timestamp >= _mission_time, close_to_circle,
+				  _pos_sp_triplet.current.lat, _pos_sp_triplet.current.lon);
+
+	TerrainFollower::Input in{};
+	in.now_us = now;
+	in.range_time_us = sel.timestamp;
+	in.dt = dt;
+	in.eligible = sp && airborne && _control_mode_current == FW_POSCTRL_MODE_AUTO && nav != TerrainFollower::NAV_OTHER;
+	in.landing = _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LAND
+		     || (_position_setpoint_next_valid && _pos_sp_triplet.next.type == position_setpoint_s::SETPOINT_TYPE_LAND)
+		     || _landing_abort_status || approach;
+	in.follow_wanted = latched && TerrainFollower::followBit(en, nav)
+			   && !(nav == TerrainFollower::NAV_MISSION && _mission_land_start >= 0 && _mission_seq >= _mission_land_start);
+	in.guard = en & 4;
+	in.in_return = nav == TerrainFollower::NAV_RETURN;
+	in.no_setpoint = airborne && nav != TerrainFollower::NAV_OTHER
+			 && (!_position_setpoint_current_valid || _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_IDLE);
+	in.alt_amsl = _current_altitude;
+	in.vz_up = -_local_pos.vz;
+	in.nav_alt = nav_alt;
+	in.raw_valid = PX4_ISFINITE(hagl_raw);
+	in.hagl_raw = hagl_raw;
+	in.range_max = sel.range_max;
+	in.ekf_valid = _local_pos.dist_bottom_valid;
+	in.hagl_ekf = _local_pos.dist_bottom;
+
+	const float bank = radians(_param_fw_tf_bank.get());
+	const TerrainFollower::Params p{_param_fw_tf_hagl.get(), _param_fw_tf_floor.get(), _param_fw_tf_tc.get(), _param_fw_tf_sink.get(),
+					_param_fw_t_clmb_max.get(), _param_fw_tf_loss_up.get(), _param_fw_tf_ttg.get(), bank, _param_fw_tf_maxdn.get()};
+
+	const TerrainFollower::Output out = _terrain_follower.update(in, p);
+
+	if (sp) {
+		if (out.use_rate) {
+			sp->altitude = NAN;
+			sp->height_rate = out.height_rate;
+
+		} else if (PX4_ISFINITE(out.altitude)) {
+			sp->altitude = out.altitude;
+		}
+
+		if (out.min_airspeed) {
+			sp->equivalent_airspeed = _param_fw_airspd_min.get();
+		}
+	}
+
+	if (out.cap_bank) {
+		_ctrl_configuration_handler.setLateralAccelMax(tanf(bank) * CONSTANTS_ONE_G);
+	}
+
+	if (out.request_return) {
+		vehicle_command_s cmd{};
+		cmd.command = vehicle_command_s::VEHICLE_CMD_NAV_RETURN_TO_LAUNCH;
+		cmd.target_system = _vehicle_status.system_id;
+		cmd.target_component = _vehicle_status.component_id;
+		cmd.source_system = _vehicle_status.system_id;
+		cmd.source_component = _vehicle_status.component_id;
+		cmd.timestamp = now;
+		_vehicle_command_pub.publish(cmd);
+		events::send(events::ID("fw_terrain_follow_return"), events::Log::Critical, "Clearance not held, returning");
+	}
+
+	const bool limited = out.state == TerrainFollower::FOLLOW && out.hagl_cmd < _param_fw_tf_hagl.get() - 0.1f;
+
+	if (limited && !_tf_limited) {
+		events::send<float>(events::ID("fw_terrain_follow_limited"), events::Log::Warning,
+				    "Terrain follow height limited to {1:.1m} by sensor range", out.hagl_cmd);
+	}
+
+	_tf_limited = limited;
+
+	if (out.descent_limited) {
+		events::send<float>(events::ID("fw_terrain_follow_max_down"), events::Log::Warning,
+				    "Terrain follow descent limited to {1:.0m} under plan", p.max_down);
+	}
+
+	if (out.state == TerrainFollower::STANDBY && in.follow_wanted && !_terrain_follower.rangeOk()) {
+		if (now >= _tf_wait_due) {
+			events::send(events::ID("fw_terrain_follow_wait_range"), events::Log::Warning, "Terrain follow waits for range");
+			_tf_wait_due = now + 10_s;
+		}
+
+	} else {
+		_tf_wait_due = now + 2500_ms;
+	}
+
+	if (out.state != _tf_state) {
+		if (out.state == TerrainFollower::FOLLOW && !_tf_announced) {
+			events::send<float>(events::ID("fw_terrain_follow_on"), events::Log::Info, "Terrain follow on, {1:.1m}", out.hagl_cmd);
+			_tf_announced = true;
+
+		} else if (out.state == TerrainFollower::PULL_UP) {
+			events::send(events::ID("fw_terrain_follow_pull_up"), events::Log::Critical, "Terrain close, pulling up");
+
+		} else if (out.state == TerrainFollower::RANGE_LOST) {
+			_tf_loss_count++;
+			events::send<float>(events::ID("fw_terrain_follow_range_lost"), events::Log::Warning, "Range lost, climbing to {1:.0m_v}",
+					    out.altitude - _reference_altitude);
+
+		} else if (out.state == TerrainFollower::FAULT && _tf_state == TerrainFollower::RANGE_LOST) {
+			events::send(events::ID("fw_terrain_follow_lost_off"), events::Log::Warning, "Range lost for 30 s, terrain follow off");
+			_tf_announced = false;
+
+		} else if (out.state == TerrainFollower::FAULT) {
+			events::send(events::ID("fw_terrain_follow_fault"), events::Log::Critical, "Range fault, terrain follow off");
+			_tf_announced = false;
+
+		} else if ((out.state == TerrainFollower::OFF || out.state == TerrainFollower::STANDBY) && _tf_announced) {
+			events::send(events::ID("fw_terrain_follow_off"), events::Log::Info, "Terrain follow off");
+			_tf_announced = false;
+		}
+	}
+
+	if (out.state != _tf_state || (en != 0 && now >= _tf_status_time + 100_ms)) {
+		terrain_follow_status_s status{};
+		status.timestamp = now;
+		status.state = out.state;
+		status.hagl_cmd = out.hagl_cmd;
+		status.hagl_used = out.hagl_used;
+		status.hagl_raw = hagl_raw;
+		status.terrain_rate = out.terrain_rate;
+		status.height_rate_sp = out.use_rate ? out.height_rate : NAN;
+		status.range_valid = _terrain_follower.rangeOk();
+		status.loss_count = _tf_loss_count;
+		_terrain_follow_status_pub.publish(status);
+		_tf_status_time = now;
+	}
+
+	_tf_state = out.state;
 }
 
 float FixedWingModeManager::getMaxRollAngleNearGround(const float altitude, const float terrain_altitude) const

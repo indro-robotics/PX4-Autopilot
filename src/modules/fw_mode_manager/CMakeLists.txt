@@ -33,6 +33,7 @@
 
 add_subdirectory(launchdetection)
 add_subdirectory(runway_takeoff)
+add_subdirectory(terrain_follow)
 
 set(POSCONTROL_DEPENDENCIES
 	launchdetection
@@ -43,6 +44,7 @@ set(POSCONTROL_DEPENDENCIES
 	motion_planning
 	performance_model
 	Sticks
+	terrain_follow
 )
 
 if(CONFIG_FIGURE_OF_EIGHT)

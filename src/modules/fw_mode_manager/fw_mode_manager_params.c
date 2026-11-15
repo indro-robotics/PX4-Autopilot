@@ -728,3 +728,113 @@ PARAM_DEFINE_FLOAT(FW_TL_LVL_ALT, 20.f);
  * @group FW General
  */
 PARAM_DEFINE_FLOAT(FW_TL_GLIDE, 8.f);
+
+/**
+ * Terrain follow enable
+ *
+ * Follow bits act only when set in flight; a bit stored at boot waits until it is cleared and set again.
+ *
+ * @min 0
+ * @max 7
+ * @bit 0 Follow in Hold
+ * @bit 1 Follow in Mission
+ * @bit 2 Ground clearance guard in Hold, Mission and Return
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_INT32(FW_TF_EN, 0);
+
+/**
+ * Terrain follow height above ground
+ *
+ * @unit m
+ * @min 10
+ * @max 100
+ * @decimal 1
+ * @increment 1
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_HAGL, 25.f);
+
+/**
+ * Terrain follow floor
+ *
+ * @unit m
+ * @min 3
+ * @max 50
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_FLOOR, 8.f);
+
+/**
+ * Terrain follow height error time constant
+ *
+ * @unit s
+ * @min 1
+ * @max 10
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_TC, 4.f);
+
+/**
+ * Terrain follow maximum descent rate
+ *
+ * @unit m/s
+ * @min 0.5
+ * @max 5
+ * @decimal 1
+ * @increment 0.1
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_SINK, 2.f);
+
+/**
+ * Terrain follow bank limit
+ *
+ * @unit deg
+ * @min 20
+ * @max 40
+ * @decimal 0
+ * @increment 1
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_BANK, 35.f);
+
+/**
+ * Terrain follow climb on range loss
+ *
+ * @unit m
+ * @min 0
+ * @max 50
+ * @decimal 1
+ * @increment 1
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_LOSS_UP, 10.f);
+
+/**
+ * Terrain follow time to floor that starts the pull-up, 0 disables
+ *
+ * @unit s
+ * @min 0
+ * @max 10
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_TTG, 3.f);
+
+/**
+ * Terrain follow descent limit under the planned altitude
+ *
+ * @unit m
+ * @min 0
+ * @max 100
+ * @decimal 1
+ * @increment 1
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_MAXDN, 10.f);

@@ -52,6 +52,8 @@ int UavcanRangefinderBridge::init()
 	// Initialize min/max range from params
 	param_get(param_find("UAVCAN_RNG_MIN"), &_range_min_m);
 	param_get(param_find("UAVCAN_RNG_MAX"), &_range_max_m);
+	param_get(param_find("UAVCAN_RDR_MIN"), &_radar_min_m);
+	param_get(param_find("UAVCAN_RDR_MAX"), &_radar_max_m);
 
 	int res = _sub_range_data.start(RangeCbBinder(this, &UavcanRangefinderBridge::range_sub_cb));
 
@@ -82,6 +84,8 @@ void UavcanRangefinderBridge::range_sub_cb(const
 
 	// Applied on every message: each node publishes its own instance and needs its own limits.
 	uint8_t rangefinder_type = 0;
+	float min_m = _range_min_m;
+	float max_m = _range_max_m;
 
 	switch (msg.sensor_type) {
 	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_SONAR:
@@ -90,6 +94,8 @@ void UavcanRangefinderBridge::range_sub_cb(const
 
 	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_RADAR:
 		rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR;
+		min_m = _radar_min_m;
+		max_m = _radar_max_m;
 		break;
 
 	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_LIDAR:
@@ -101,8 +107,8 @@ void UavcanRangefinderBridge::range_sub_cb(const
 
 	rangefinder->set_rangefinder_type(rangefinder_type);
 	rangefinder->set_fov(msg.field_of_view);
-	rangefinder->set_min_distance(_range_min_m);
-	rangefinder->set_max_distance(_range_max_m);
+	rangefinder->set_min_distance(min_m);
+	rangefinder->set_max_distance(max_m);
 
 	// a reading the node does not mark valid is invalid here too, so the estimator leaves it out
 	const int8_t quality = (msg.reading_type == uavcan::equipment::range_sensor::Measurement::READING_TYPE_VALID_RANGE) ? 100 : 0;

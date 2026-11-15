@@ -2552,51 +2552,28 @@ void EKF2::UpdateRangeSample(ekf2_timestamps_s &ekf2_timestamps)
 		return;
 	}
 
+	distance_sensor_s samples[decltype(_distance_sensor_subs)::size()] {};
+
+	for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
+		_distance_sensor_subs[i].copy(&samples[i]);
+	}
+
 	// a sensor silent for 0.1 s drops out of the mean, so one sensor alone still feeds the filter
 	const hrt_abstime timestamp_stale = math::max(ekf2_timestamps.timestamp, 100_ms) - 100_ms;
 
-	distance_sensor_s newest{};
-	distance_sensor_s good{};
-	float sum = 0.f;
-	uint64_t time_sum = 0;
-	int n = 0;
+	const range_select::Selection sel = range_select::selectDownwardRange(samples, _distance_sensor_subs.size(),
+					    timestamp_stale, _range_long_floor);
 
-	for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
-		distance_sensor_s distance_sensor;
-
-		if (_distance_sensor_subs[i].copy(&distance_sensor)
-		    && (distance_sensor.timestamp > timestamp_stale)
-		    && (distance_sensor.orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING)) {
-
-			if (distance_sensor.timestamp > newest.timestamp) {
-				newest = distance_sensor;
-			}
-
-			if ((distance_sensor.signal_quality != 0)
-			    && (distance_sensor.current_distance >= distance_sensor.min_distance)
-			    && (distance_sensor.current_distance <= distance_sensor.max_distance)) {
-
-				sum += distance_sensor.current_distance;
-				time_sum += distance_sensor.timestamp;
-				n++;
-
-				if (distance_sensor.timestamp > good.timestamp) {
-					good = distance_sensor;
-				}
-			}
-		}
-	}
-
-	if (newest.timestamp == 0) {
+	if (sel.used < 0) {
 		return;
 	}
 
 	// with no reading in range the newest sample goes through unchanged and the filter rejects it
-	const distance_sensor_s &used = (n > 0) ? good : newest;
+	const distance_sensor_s &used = samples[sel.used];
 
 	estimator::sensor::rangeSample range_sample {
-		.time_us = (n > 0) ? time_sum / n : used.timestamp,
-		.rng = (n > 0) ? sum / n : used.current_distance,
+		.time_us = sel.timestamp,
+		.rng = sel.distance,
 		.quality = used.signal_quality,
 	};
 	_ekf.setRangeData(range_sample);

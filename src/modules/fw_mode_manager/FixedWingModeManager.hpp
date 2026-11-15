@@ -43,6 +43,7 @@
 #include "launchdetection/LaunchCourse.hpp"
 #include "launchdetection/LaunchDetector.h"
 #include "runway_takeoff/RunwayTakeoff.h"
+#include "terrain_follow/TerrainFollower.hpp"
 #include "ControllerConfigurationHandler.hpp"
 
 #include <float.h>
@@ -66,20 +67,25 @@
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/Subscription.hpp>
 #include <uORB/SubscriptionCallback.hpp>
+#include <uORB/SubscriptionMultiArray.hpp>
 #include <uORB/topics/airspeed_validated.h>
+#include <uORB/topics/distance_sensor.h>
 #include <uORB/topics/fixed_wing_lateral_setpoint.h>
 #include <uORB/topics/fixed_wing_lateral_guidance_status.h>
 #include <uORB/topics/fixed_wing_longitudinal_setpoint.h>
 #include <uORB/topics/fixed_wing_runway_control.h>
 #include <uORB/topics/landing_gear.h>
 #include <uORB/topics/launch_detection_status.h>
+#include <uORB/topics/mission.h>
 #include <uORB/topics/normalized_unsigned_setpoint.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/position_controller_landing_status.h>
 #include <uORB/topics/position_controller_status.h>
 #include <uORB/topics/position_setpoint_triplet.h>
+#include <uORB/topics/rtl_status.h>
 #include <uORB/topics/sensor_gps.h>
 #include <uORB/topics/tecs_status.h>
+#include <uORB/topics/terrain_follow_status.h>
 #include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/vehicle_attitude.h>
@@ -191,7 +197,12 @@ private:
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _tecs_status_sub{ORB_ID(tecs_status)};
+	uORB::Subscription _mission_sub{ORB_ID(mission)};
+	uORB::Subscription _rtl_status_sub{ORB_ID(rtl_status)};
+	uORB::SubscriptionMultiArray<distance_sensor_s> _distance_sensor_subs{ORB_ID::distance_sensor};
 
+	uORB::Publication<terrain_follow_status_s> _terrain_follow_status_pub{ORB_ID(terrain_follow_status)};
+	uORB::Publication<vehicle_command_s> _vehicle_command_pub{ORB_ID(vehicle_command)};
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub{ORB_ID(vehicle_local_position_setpoint)};
 	uORB::Publication<position_controller_landing_status_s>	_pos_ctrl_landing_status_pub{ORB_ID(position_controller_landing_status)};
 	uORB::Publication<launch_detection_status_s> _launch_detection_status_pub{ORB_ID(launch_detection_status)};
@@ -419,6 +430,28 @@ private:
 
 	hrt_abstime _time_in_fixed_bank_loiter{0}; // [us]
 	float _min_current_sp_distance_xy{FLT_MAX};
+
+	TerrainFollower _terrain_follower;
+	TerrainFollower::StuckCheck _range_stuck[ORB_MULTI_MAX_INSTANCES] {};
+	distance_sensor_s _range_samples[ORB_MULTI_MAX_INSTANCES] {};
+	float _cos_tilt{1.f};
+	float _range_long_floor{0.f};
+	int32_t _mission_land_start{-1};
+	int32_t _mission_seq{-1};
+	uint8_t _rtl_type{rtl_status_s::RTL_STATUS_TYPE_NONE};
+	hrt_abstime _mission_time{0};
+	TerrainFollower::ApproachLatch _tf_approach;
+	bool _tf_called{false};
+	bool _tf_airborne{false};
+	bool _tf_announced{false};
+	bool _tf_limited{false};
+	uint8_t _tf_state{TerrainFollower::OFF};
+	uint16_t _tf_loss_count{0};
+	hrt_abstime _tf_status_time{0};
+	hrt_abstime _tf_wait_due{0};
+
+	void applyTerrainFollow(const float dt, const float nav_alt, fixed_wing_longitudinal_setpoint_s *sp,
+				bool close_to_circle);
 
 #ifdef CONFIG_FIGURE_OF_EIGHT
 	/* Loitering */
@@ -917,7 +950,17 @@ private:
 		(ParamFloat<px4::params::FW_AIRSPD_MAX>) _param_fw_airspd_max,
 		(ParamFloat<px4::params::FW_AIRSPD_MIN>) _param_fw_airspd_min,
 		(ParamFloat<px4::params::FW_AIRSPD_TRIM>) _param_fw_airspd_trim,
-		(ParamFloat<px4::params::FW_T_CLMB_MAX>) _param_fw_t_clmb_max
+		(ParamFloat<px4::params::FW_T_CLMB_MAX>) _param_fw_t_clmb_max,
+		(ParamInt<px4::params::EKF2_RNG_CTRL>) _param_ekf2_rng_ctrl,
+		(ParamInt<px4::params::FW_TF_EN>) _param_fw_tf_en,
+		(ParamFloat<px4::params::FW_TF_HAGL>) _param_fw_tf_hagl,
+		(ParamFloat<px4::params::FW_TF_FLOOR>) _param_fw_tf_floor,
+		(ParamFloat<px4::params::FW_TF_TC>) _param_fw_tf_tc,
+		(ParamFloat<px4::params::FW_TF_SINK>) _param_fw_tf_sink,
+		(ParamFloat<px4::params::FW_TF_BANK>) _param_fw_tf_bank,
+		(ParamFloat<px4::params::FW_TF_LOSS_UP>) _param_fw_tf_loss_up,
+		(ParamFloat<px4::params::FW_TF_TTG>) _param_fw_tf_ttg,
+		(ParamFloat<px4::params::FW_TF_MAXDN>) _param_fw_tf_maxdn
 	)
 };
 
