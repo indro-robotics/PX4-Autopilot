@@ -358,6 +358,7 @@ private:
 		float initial_height{0.0f}; // [m] above the terrain estimate
 		float pitch_entry{0.0f}; // [rad]
 		float pitch_integ{0.0f}; // [rad]
+		float airspeed_land{0.0f}; // [m/s] landing airspeed setpoint at the flare entry
 		bool range_schedule{false};
 	} _flare_states;
 
@@ -855,6 +856,7 @@ private:
 		(ParamFloat<px4::params::FW_R_LIM>) _param_fw_r_lim,
 		(ParamFloat<px4::params::FW_TL_LVL_ALT>) _param_fw_tl_lvl_alt,
 		(ParamFloat<px4::params::FW_TL_GLIDE>) _param_fw_tl_glide,
+		(ParamFloat<px4::params::FD_FW_TL_TIME>) _param_fd_fw_tl_time,
 
 		(ParamFloat<px4::params::NPFG_PERIOD>) _param_npfg_period,
 		(ParamFloat<px4::params::NPFG_DAMPING>) _param_npfg_damping,

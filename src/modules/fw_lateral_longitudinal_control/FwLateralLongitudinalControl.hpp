@@ -171,7 +171,8 @@ private:
 		(ParamFloat<px4::params::FW_WIND_ARSP_SC>) _param_fw_wind_arsp_sc,
 		(ParamFloat<px4::params::FW_GND_SPD_MIN>) _param_fw_gnd_spd_min,
 		(ParamFloat<px4::params::NPFG_DAMPING>) _param_npfg_damping,
-		(ParamFloat<px4::params::NPFG_PERIOD>) _param_npfg_period
+		(ParamFloat<px4::params::NPFG_PERIOD>) _param_npfg_period,
+		(ParamFloat<px4::params::FD_FW_TL_TIME>) _param_fd_fw_tl_time
 	)
 
 	hrt_abstime _last_time_loop_ran{};

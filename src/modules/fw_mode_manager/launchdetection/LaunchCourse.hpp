@@ -44,6 +44,9 @@ using namespace time_literals;
 
 static constexpr hrt_abstime kCourseFixMaxAge = 300_ms;
 
+// [m] a position error of 5 m over a 20 m track turns the course by up to 14 deg
+static constexpr float kCourseEphMax = 2.f;
+
 // climb-out course from the GNSS track: a steel launcher rail beside the compass bends the heading at detection
 class LaunchCourse
 {
@@ -58,11 +61,14 @@ public:
 	 * @param gps latest vehicle_gps_position
 	 * @param now current time [us]
 	 * @param distance FW_LAUN_CRS_DST [m], 0 disables
-	 * @return bearing [rad] from the first 3D fix after reset() to the first one distance away, once; NAN otherwise
+	 * @return bearing [rad] from the first fix of type 3D to RTK fixed with eph under kCourseEphMax after reset() to
+	 * the first one distance away, once; NAN otherwise
 	 */
 	float update(const sensor_gps_s &gps, const hrt_abstime now, const float distance)
 	{
-		if (_done || !(distance > 0.f) || gps.fix_type < sensor_gps_s::FIX_TYPE_3D || now > gps.timestamp + kCourseFixMaxAge) {
+		if (_done || !(distance > 0.f) || gps.fix_type < sensor_gps_s::FIX_TYPE_3D
+		    || gps.fix_type > sensor_gps_s::FIX_TYPE_RTK_FIXED || !(gps.eph < kCourseEphMax)
+		    || now > gps.timestamp + kCourseFixMaxAge) {
 			return NAN;
 		}
 

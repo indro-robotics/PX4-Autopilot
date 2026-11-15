@@ -62,6 +62,7 @@
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_imu_status.h>
 #include <uORB/topics/vehicle_land_detected.h>
+#include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_status.h>
 #include <uORB/topics/pwm_input.h>
 
@@ -133,6 +134,10 @@ private:
 	uORB::Subscription _actuator_motors_sub{ORB_ID(actuator_motors)};
 	uORB::Subscription _tecs_status_sub{ORB_ID(tecs_status)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
+	uORB::Subscription _vehicle_local_position_sub{ORB_ID(vehicle_local_position)};
+
+	// the parameter belongs to the fixed-wing mode manager, which not every board builds
+	const param_t _param_fw_tl_lvl_alt_handle{param_find("FW_TL_LVL_ALT")};
 
 	FailureInjector _failure_injector;
 

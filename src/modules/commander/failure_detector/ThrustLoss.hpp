@@ -44,8 +44,8 @@ public:
 		float rate;
 	};
 
-	// energy_rate is tecs_status.total_energy_rate in m^2/s^3; flying is fixed wing and not landed
-	void update(uint64_t t_us, bool armed, bool flying, float throttle, float energy_rate, const Param &p)
+	// energy_rate is tecs_status.total_energy_rate in m^2/s^3; flying is fixed wing and not landed; low is under FW_TL_LVL_ALT
+	void update(uint64_t t_us, bool armed, bool flying, bool low, float throttle, float energy_rate, const Param &p)
 	{
 		if (!armed || p.time_s <= 0.f) {
 			*this = ThrustLoss{};
@@ -66,7 +66,8 @@ public:
 		const float e = energy_rate / 9.81f;
 		const bool thrust_expected = throttle >= p.throttle;
 		// TECS lowers the throttle once thrust is back, so the energy gain alone clears the flag
-		const bool change = _lost ? (e > -p.rate) : (thrust_expected && flying && e < p.rate);
+		// rising air near the ground would clear the flag over a dead motor and bank the glide toward its setpoint
+		const bool change = _lost ? (e > -p.rate && !(low && flying)) : (thrust_expected && flying && e < p.rate);
 
 		if (!change) {
 			_t_change = 0;

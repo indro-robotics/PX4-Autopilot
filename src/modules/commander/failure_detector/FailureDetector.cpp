@@ -369,7 +369,17 @@ void FailureDetector::updateThrustLoss(const vehicle_status_s &vehicle_status)
 
 	if (_tecs_status_sub.update(&tecs_status) || !armed) {
 		const bool flying = vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING && !_landed;
-		_thrust_loss.update(tecs_status.timestamp, armed, flying, tecs_status.throttle_sp, tecs_status.total_energy_rate,
+		bool low = false;
+
+		if (_thrust_loss.lost()) {
+			vehicle_local_position_s lpos{};
+			float level_alt = 0.f;
+			_vehicle_local_position_sub.copy(&lpos);
+			param_get(_param_fw_tl_lvl_alt_handle, &level_alt);
+			low = (lpos.dist_bottom_valid ? lpos.dist_bottom : -lpos.z) < level_alt;
+		}
+
+		_thrust_loss.update(tecs_status.timestamp, armed, flying, low, tecs_status.throttle_sp, tecs_status.total_energy_rate,
 		{_param_fd_fw_tl_time.get(), _param_fd_fw_tl_thr.get(), _param_fd_fw_tl_rate.get()});
 	}
 }

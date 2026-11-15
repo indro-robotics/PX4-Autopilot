@@ -52,6 +52,17 @@ param set-default FD_ESCS_EN 0
 param set-default SYS_FAILURE_EN 1
 param set-default CA_FAILURE_MODE 1
 
+# Rate gains of the simulated wing, from autotune; the aircraft takes its own.
+param set-default FW_PR_FF 0.6075
+param set-default FW_PR_I 1.0
+param set-default FW_PR_P 0.1805
+param set-default FW_P_TC 0.4
+param set-default FW_RR_FF 0.5005
+param set-default FW_RR_I 0.1887
+param set-default FW_RR_P 0.1743
+param set-default FW_R_TC 0.4
+
+# Auto modes subtract the pitch offset ahead of TECS and never add it back.
+param set-default FW_PSP_OFF 0.001
 # Level trim of the simulated wing at 18 m/s and 3.78 kg.
-param set-default FW_PSP_OFF 2.1
 param set-default FW_THR_TRIM 0.48

@@ -174,6 +174,34 @@ TEST_F(LaunchDetectorTest, InvalidSpeedFlies)
 	LaunchDetector detector{nullptr};
 	EXPECT_EQ(shot(detector, NAN), Status::STATE_FLYING);
 	EXPECT_FALSE(detector.aborted());
+	// a published Waiting in flight would let the land detector report landed
+	EXPECT_EQ(detector.getPublishedState(), Status::STATE_FLYING);
+}
+
+TEST_F(LaunchDetectorTest, InvalidAttitudeFlies)
+{
+	// the takeoff without navigation passes no speed and no attitude and keeps the stock launch
+	for (const float speed : {kGate + 0.5f, NAN}) {
+		LaunchDetector detector{nullptr};
+		EXPECT_EQ(shot(detector, speed, NAN, NAN), Status::STATE_FLYING);
+		EXPECT_FALSE(detector.aborted());
+	}
+}
+
+TEST_F(LaunchDetectorTest, ShotAtTheGateSpeedFlies)
+{
+	LaunchDetector detector{nullptr};
+	EXPECT_EQ(shot(detector, kGate), Status::STATE_FLYING);
+	EXPECT_FALSE(detector.aborted());
+}
+
+TEST_F(LaunchDetectorTest, SlowShotAcceleratingAtThreeMetresPerSecondSquaredWaits)
+{
+	LaunchDetector detector{nullptr};
+	run(detector, 0.15f, kShotAccel, 0.f);
+	run(detector, 0.5f, 3.f, kGate - 1.5f);
+	EXPECT_EQ(detector.getLaunchDetected(), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
+	EXPECT_FALSE(detector.aborted());
 }
 
 TEST_F(LaunchDetectorTest, ResetClearsAbort)

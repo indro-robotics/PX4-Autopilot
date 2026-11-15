@@ -45,9 +45,11 @@ static constexpr float kDistance = 20.f;
 static constexpr hrt_abstime kNow = 100000000;
 
 // A 3D fix the given metres north and east of the launch point, age_s old at kNow.
-static sensor_gps_s fix(double north, double east, float age_s = 0.1f, uint8_t fix_type = sensor_gps_s::FIX_TYPE_3D)
+static sensor_gps_s fix(double north, double east, float age_s = 0.1f, uint8_t fix_type = sensor_gps_s::FIX_TYPE_3D,
+			float eph = 0.5f)
 {
 	sensor_gps_s gps{};
+	gps.eph = eph;
 	gps.timestamp = kNow - (hrt_abstime)(age_s * 1e6f);
 	gps.latitude_deg = kLat0 + north / kEarthRadius * 180.0 / M_PI;
 	gps.longitude_deg = kLon0 + east / (kEarthRadius * cos(kLat0 * M_PI / 180.0)) * 180.0 / M_PI;
@@ -130,4 +132,23 @@ TEST(LaunchCourseTest, FixOlderThanThreeTenthsOfASecondIsIgnored)
 	course.update(fix(0, 0, 0.29f), kNow, kDistance);
 	EXPECT_TRUE(isnan(course.update(fix(25, 0, 0.31f), kNow, kDistance)));
 	EXPECT_NEAR(math::degrees(course.update(fix(25, 0, 0.29f), kNow, kDistance)), 0.f, 0.01f);
+}
+
+TEST(LaunchCourseTest, ExtrapolatedFixNeitherStartsNorEnds)
+{
+	LaunchCourse course;
+	course.update(fix(0, 50, 0.1f, sensor_gps_s::FIX_TYPE_EXTRAPOLATED), kNow, kDistance);
+	course.update(fix(0, 0, 0.1f, sensor_gps_s::FIX_TYPE_RTK_FIXED), kNow, kDistance);
+	EXPECT_TRUE(isnan(course.update(fix(25, 0, 0.1f, sensor_gps_s::FIX_TYPE_EXTRAPOLATED), kNow, kDistance)));
+	EXPECT_NEAR(math::degrees(course.update(fix(25, 0, 0.1f, sensor_gps_s::FIX_TYPE_RTK_FIXED), kNow, kDistance)), 0.f, 0.01f);
+}
+
+TEST(LaunchCourseTest, FixWithTwoMetresOfErrorNeitherStartsNorEnds)
+{
+	LaunchCourse course;
+	course.update(fix(0, 50, 0.1f, sensor_gps_s::FIX_TYPE_3D, 2.f), kNow, kDistance);
+	course.update(fix(0, 60, 0.1f, sensor_gps_s::FIX_TYPE_3D, NAN), kNow, kDistance);
+	course.update(fix(0, 0, 0.1f, sensor_gps_s::FIX_TYPE_3D, 1.9f), kNow, kDistance);
+	EXPECT_TRUE(isnan(course.update(fix(25, 0, 0.1f, sensor_gps_s::FIX_TYPE_3D, 2.f), kNow, kDistance)));
+	EXPECT_NEAR(math::degrees(course.update(fix(25, 0, 0.1f, sensor_gps_s::FIX_TYPE_3D, 1.9f), kNow, kDistance)), 0.f, 0.01f);
 }

@@ -255,7 +255,8 @@ PARAM_DEFINE_FLOAT(FW_TKO_AIRSPD, -1.0f);
 /**
  * Landing flare altitude (relative to landing altitude)
  *
- * NOTE: max(FW_LND_FLALT, FW_LND_FL_TIME * |z-velocity|) is taken as the flare altitude
+ * The flare starts at max(FW_LND_FLALT, FW_LND_FL_TIME * sink rate). With FW_LND_FL_TTD above 0 it starts at
+ * FW_LND_FL_TTD * sink rate, at least at FW_LND_FLALT and, with FW_LND_FLALT above 0, at most at twice FW_LND_FLALT.
  *
  * @unit m
  * @min 0.0
@@ -469,10 +470,8 @@ PARAM_DEFINE_FLOAT(FW_WING_HEIGHT, 0.5);
 /**
  * Landing flare time
  *
- * Multiplied by the descent rate to calculate a dynamic altitude at which
- * to trigger the flare.
- *
- * NOTE: max(FW_LND_FLALT, FW_LND_FL_TIME * descent rate) is taken as the flare altitude
+ * Time over which the flare limits ramp in. With FW_LND_FL_TTD at 0 the flare starts at
+ * max(FW_LND_FLALT, FW_LND_FL_TIME * sink rate); FW_LND_FL_TTD above 0 takes its place in the trigger.
  *
  * @unit s
  * @min 0.1
@@ -551,8 +550,8 @@ PARAM_DEFINE_FLOAT(FW_LND_FL_KI, 0.0f);
 /**
  * Landing flare time to touchdown
  *
- * The flare starts at this time to ground at the current sink rate, at least at FW_LND_FLALT and at most at
- * twice FW_LND_FLALT.
+ * The flare starts at this time to ground at the current sink rate, at least at FW_LND_FLALT and, with FW_LND_FLALT
+ * above 0, at most at twice FW_LND_FLALT.
  *
  * Set to 0 to use FW_LND_FL_TIME.
  *
@@ -703,8 +702,9 @@ PARAM_DEFINE_FLOAT(FW_SPOILERS_LND, 0.f);
 /**
  * Thrust loss wings-level height
  *
- * Height above ground below which the aircraft flies wings level once the motor failure flag is set,
- * raised by the distance to the active position setpoint over FW_TL_GLIDE; a straight landing is exempt.
+ * Height above ground below which an auto mode flies wings level once the thrust loss check (FD_FW_TL_TIME) has set
+ * the motor failure flag, raised by the distance to the active position setpoint, for an orbit to its circle, over
+ * FW_TL_GLIDE; a straight landing is exempt. Below this height the flag holds until landed.
  *
  * @unit m
  * @min 0.0

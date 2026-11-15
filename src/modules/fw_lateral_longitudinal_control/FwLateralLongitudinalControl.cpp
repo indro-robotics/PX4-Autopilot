@@ -652,7 +652,8 @@ FwLateralLongitudinalControl::adapt_airspeed_setpoint(const float control_interv
 	// constrain airspeed to feasible range
 	calibrated_airspeed_setpoint = math::constrain(calibrated_airspeed_setpoint, system_min_airspeed, system_max_airspeed);
 
-	if (_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR) {
+	if ((_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)
+	    && _param_fd_fw_tl_time.get() > 0.f) {
 		calibrated_airspeed_setpoint = system_min_airspeed;
 	}
 

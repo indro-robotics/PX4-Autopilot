@@ -38,10 +38,29 @@
 namespace flare_law
 {
 
-// capped at twice flalt so a momentary downdraft does not start the flare high
-inline float triggerHeight(float time, float vz, float flalt)
+// the cap belongs to the time-to-touchdown trigger: there a momentary downdraft would start the flare high
+inline float triggerHeight(float ttd, float time, float vz, float flalt)
 {
-	return math::constrain(time * vz, flalt, 2.f * flalt);
+	return (ttd > FLT_EPSILON && flalt > FLT_EPSILON) ? math::constrain(ttd * vz, flalt, 2.f * flalt) :
+	       math::max((ttd > FLT_EPSILON ? ttd : time) * vz, flalt);
+}
+
+// a switch between the landing types in the flare would start the flare again at full throttle
+inline bool landingReset(bool landing, bool mode_changed, bool flaring)
+{
+	return !landing || (mode_changed && !flaring);
+}
+
+// a stale sample means TECS was not flying the pitch, so the measured pitch seeds the law
+inline float entryPitch(bool tecs_valid, uint64_t now_us, uint64_t tecs_us, float tecs_pitch, float pitch)
+{
+	return (tecs_valid && now_us < tecs_us + 200000) ? tecs_pitch : pitch;
+}
+
+// a nose-down entry pitch would lower the whole flare, so the seed rises to the flare floor over the ramp
+inline float seed(float pitch_entry, float pmin, float time, float ramp_time)
+{
+	return pitch_entry + (math::max(pitch_entry, pmin) - pitch_entry) * math::min(time / ramp_time, 1.f);
 }
 
 // without terrain use the landing height is not range, so only the time ramp is valid there

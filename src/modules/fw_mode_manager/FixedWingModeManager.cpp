@@ -1375,10 +1375,8 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 			if (_control_mode.flag_armed) {
 				/* Detect launch using body X (forward) acceleration */
-				vehicle_attitude_s attitude{};
-				_launch_attitude_sub.copy(&attitude);
-				const Eulerf euler{Quatf{attitude.q}};
-				_launchDetector.update(control_interval, _body_acceleration_x, NAN, euler.phi(), euler.theta());
+				// no abort glide exists without navigation, so neither gate runs
+				_launchDetector.update(control_interval, _body_acceleration_x, NAN, NAN, NAN);
 			}
 
 		} else	{
@@ -1466,6 +1464,14 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 					  _param_fw_airspd_trim.get()));
 	}
 
+	// a headwind additive that moves in the flare has TECS trade sink for speed at idle
+	if (_flare_states.flaring) {
+		airspeed_land = _flare_states.airspeed_land;
+
+	} else {
+		_flare_states.airspeed_land = airspeed_land;
+	}
+
 	// calculate the altitude setpoint based on the landing glide slope
 	const float along_track_dist_to_touchdown = -landing_approach_vector.unit_or_zero().dot(
 				local_position - local_land_point);
@@ -1491,9 +1497,9 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 	// a dip under the slope is climbed back; a final entered under the slope holds its start height until it meets it
 	const float altitude_setpoint = math::min(glide_slope_reference_alt + glide_slope_rel_alt, _landing_start_altitude);
 
-	// flare at the altitude determined by the time before touchdown, between the minimum flare altitude and twice it
-	const float flare_rel_alt = flare_law::triggerHeight(_param_fw_lnd_fl_ttd.get() > FLT_EPSILON ? _param_fw_lnd_fl_ttd.get() :
-				    _param_fw_lnd_fl_time.get(), _local_pos.vz, _param_fw_lnd_flalt.get());
+	// flare at the maximum of the altitude determined by the time before touchdown and a minimum flare altitude
+	const float flare_rel_alt = flare_law::triggerHeight(_param_fw_lnd_fl_ttd.get(), _param_fw_lnd_fl_time.get(),
+				    _local_pos.vz, _param_fw_lnd_flalt.get());
 
 
 	// the terrain estimate (if enabled) is always used to determine the flaring altitude
@@ -1681,9 +1687,9 @@ FixedWingModeManager::control_auto_landing_circular(const hrt_abstime &now, cons
 					      position_controller_landing_status_s::TERRAIN_TIMEOUT);
 	const float terrain_alt = getLandingTerrainAltitudeEstimate(now, pos_sp_curr.alt, false, abort_on_terrain_timeout);
 
-	// flare at the altitude determined by the time before touchdown, between the minimum flare altitude and twice it
-	const float flare_rel_alt = flare_law::triggerHeight(_param_fw_lnd_fl_ttd.get() > FLT_EPSILON ? _param_fw_lnd_fl_ttd.get() :
-				    _param_fw_lnd_fl_time.get(), _local_pos.vz, _param_fw_lnd_flalt.get());
+	// flare at the maximum of the altitude determined by the time before touchdown and a minimum flare altitude
+	const float flare_rel_alt = flare_law::triggerHeight(_param_fw_lnd_fl_ttd.get(), _param_fw_lnd_fl_time.get(),
+				    _local_pos.vz, _param_fw_lnd_flalt.get());
 
 	float loiter_radius = fabsf(pos_sp_curr.loiter_radius);
 	bool loiter_direction_ccw = pos_sp_curr.loiter_direction_counter_clockwise;
@@ -2220,9 +2226,9 @@ FixedWingModeManager::Run()
 		// by default set speed weight to the param value, can be overwritten inside the methods below
 		_ctrl_configuration_handler.setSpeedWeight(_param_t_spdweight.get());
 
-		if ((_control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT
-		     && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_CIRCULAR)
-		    || _control_mode_current != _landing_mode_last) {
+		if (flare_law::landingReset(_control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT
+					    || _control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_CIRCULAR,
+					    _control_mode_current != _landing_mode_last, _flare_states.flaring)) {
 			reset_landing_state();
 		}
 
@@ -2306,19 +2312,29 @@ FixedWingModeManager::Run()
 
 		_launch_aborted = _control_mode.flag_armed && (_launch_aborted || _launchDetector.aborted());
 
-		if (_vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) {
+		const bool auto_mode = _control_mode.flag_control_auto_enabled;
+
+		// the ESC checks raise the same flag: without the thrust loss check the flag keeps its stock meaning
+		if ((_vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) && _param_fd_fw_tl_time.get() > 0.f) {
 			const float height = _local_pos.dist_bottom_valid ? _local_pos.dist_bottom : _current_altitude - _reference_altitude;
 			const bool landing = _control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT
 					     || _control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_CIRCULAR;
 			const bool takeoff = _control_mode_current == FW_POSCTRL_MODE_AUTO_TAKEOFF
 					     || _control_mode_current == FW_POSCTRL_MODE_AUTO_TAKEOFF_NO_NAV;
-			const float dist_sp = _pos_sp_triplet.current.valid ? get_distance_to_next_waypoint(_current_latitude,
-					      _current_longitude, _pos_sp_triplet.current.lat, _pos_sp_triplet.current.lon) : 0.f;
+			float dist_sp = _pos_sp_triplet.current.valid ? get_distance_to_next_waypoint(_current_latitude,
+					_current_longitude, _pos_sp_triplet.current.lat, _pos_sp_triplet.current.lon) : 0.f;
+
+			// an orbit is reached at its circle: the distance to its centre would level the wings on the pattern orbit
+			if (_pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LOITER
+			    && PX4_ISFINITE(_pos_sp_triplet.current.loiter_radius)) {
+				dist_sp = math::max(dist_sp - fabsf(_pos_sp_triplet.current.loiter_radius), 0.f);
+			}
+
 			// below this height the setpoint is out of glide reach, and a turn toward it only loses height
 			const float level_height = _param_fw_tl_lvl_alt.get() + (PX4_ISFINITE(dist_sp) ? dist_sp : 0.f) /
-						   _param_fw_tl_glide.get();
+						   math::max(_param_fw_tl_glide.get(), 1.f);
 
-			if (height < level_height && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT) {
+			if (auto_mode && height < level_height && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT) {
 				_ctrl_configuration_handler.setLateralAccelMax(0.f);
 			}
 
@@ -2333,7 +2349,7 @@ FixedWingModeManager::Run()
 			if (_landed) {
 				_ctrl_configuration_handler.setThrottleMax(_param_fw_thr_idle.get());
 
-			} else if (!landing && !_launch_aborted) {
+			} else if (auto_mode && !landing && !_launch_aborted && _local_pos.z_valid && _local_pos.v_z_valid) {
 				// full demand makes a working motor show the energy gain that clears the flag in flight
 				_ctrl_configuration_handler.setThrottleMin(_param_fw_thr_max.get());
 			}
@@ -2341,6 +2357,11 @@ FixedWingModeManager::Run()
 
 		if (_launch_aborted) {
 			_ctrl_configuration_handler.setThrottleMax(_param_fw_thr_idle.get());
+
+			// a failsafe in the abort glide would bank toward its loiter a wing length above the ground
+			if (auto_mode) {
+				_ctrl_configuration_handler.setLateralAccelMax(0.f);
+			}
 		}
 
 		if (_control_mode_current != FW_POSCTRL_MODE_OTHER) {
@@ -2425,19 +2446,21 @@ float FixedWingModeManager::flarePitch(float height_rate_setpoint, float pitch_m
 	}
 
 	const float speed = math::max(_airspeed_valid ? _airspeed_eas : ground_speed.norm(), 0.7f * _param_fw_airspd_min.get());
+	const float time = hrt_elapsed_time(&_flare_states.start_time) * 1.e-6f;
 
-	return flare_law::pitch(height_rate_setpoint, _flare_states.initial_height_rate_setpoint, _flare_states.pitch_entry,
+	return flare_law::pitch(height_rate_setpoint, _flare_states.initial_height_rate_setpoint,
+				flare_law::seed(_flare_states.pitch_entry, radians(_param_fw_lnd_fl_pmin.get()), time, _param_fw_lnd_fl_time.get()),
 				_local_pos.vz, speed, radians(_param_fw_lnd_fl_kp.get()), radians(_param_fw_lnd_fl_ki.get()), pitch_min,
-				math::min(pitch_max, flare_law::ceiling(_flare_states.pitch_entry, radians(_param_fw_lnd_fl_pmax.get()),
-						hrt_elapsed_time(&_flare_states.start_time) * 1.e-6f, _param_fw_lnd_fl_time.get())), dt, _flare_states.pitch_integ);
+				math::min(pitch_max, flare_law::ceiling(_flare_states.pitch_entry, radians(_param_fw_lnd_fl_pmax.get()), time,
+						_param_fw_lnd_fl_time.get())), dt, _flare_states.pitch_integ);
 }
 
 float FixedWingModeManager::flareEntryPitch(const hrt_abstime &now)
 {
-	tecs_status_s tecs_status;
+	tecs_status_s tecs_status{};
+	const bool valid = _tecs_status_sub.copy(&tecs_status);
 
-	// a stale sample means TECS was not flying the pitch, so the measured pitch seeds the law
-	return (_tecs_status_sub.copy(&tecs_status) && now < tecs_status.timestamp + 200_ms) ? tecs_status.pitch_sp_rad : _pitch;
+	return flare_law::entryPitch(valid, now, tecs_status.timestamp, tecs_status.pitch_sp_rad, _pitch);
 }
 
 float FixedWingModeManager::getMaxRollAngleNearGround(const float altitude, const float terrain_altitude) const

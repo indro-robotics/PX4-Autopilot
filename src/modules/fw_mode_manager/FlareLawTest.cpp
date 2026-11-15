@@ -148,10 +148,62 @@ TEST(FlareLawTest, ScheduleFollowsHeightAloneForAnyEntrySink)
 
 TEST(FlareLawTest, TriggerHeightCappedAtTwiceFlareAltitude)
 {
-	// 1.4 s x 1.6 m/s = 2.24 m; 1.4 s x 3.0 m/s = 4.2 m capped at 2 x 1.5 m; 0.3 s x 1.6 m/s under the 1.5 m floor
-	EXPECT_FLOAT_EQ(flare_law::triggerHeight(1.4f, 1.6f, 1.5f), 2.24f);
-	EXPECT_FLOAT_EQ(flare_law::triggerHeight(1.4f, 3.f, 1.5f), 3.f);
-	EXPECT_FLOAT_EQ(flare_law::triggerHeight(0.3f, 1.6f, 1.5f), 1.5f);
+	// time to touchdown 1.4 s: 1.4 x 1.6 m/s = 2.24 m; 1.4 x 3.0 m/s = 4.2 m capped at 2 x 1.5 m; 0.3 s x 1.6 m/s under the 1.5 m floor
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(1.4f, 9.f, 1.6f, 1.5f), 2.24f);
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(1.4f, 9.f, 3.f, 1.5f), 3.f);
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(0.3f, 9.f, 1.6f, 1.5f), 1.5f);
+}
+
+TEST(FlareLawTest, TriggerHeightWithoutTimeToTouchdownIsStock)
+{
+	// stock: max(flare time x sink, flare altitude). 1.0 s x 1.6 m/s = 1.6 m over 2 x 0.5 m; 0.3 s x 1.6 m/s under 1.5 m
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(0.f, 1.f, 1.6f, 0.5f), 1.6f);
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(0.f, 1.f, 4.f, 0.5f), 4.f);
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(0.f, 0.3f, 1.6f, 1.5f), 1.5f);
+	// a flare altitude of 0 still flares from the time: 1.0 s x 1.7 m/s
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(0.f, 1.f, 1.7f, 0.f), 1.7f);
+}
+
+TEST(FlareLawTest, TriggerHeightWithoutFlareAltitudeHasNoCap)
+{
+	// time to touchdown 1.4 s at 3.0 m/s: 4.2 m, where a cap of 2 x 0 m would never flare
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(1.4f, 9.f, 3.f, 0.f), 4.2f);
+	EXPECT_FLOAT_EQ(flare_law::triggerHeight(1.4f, 9.f, -1.f, 0.f), 0.f);
+}
+
+TEST(FlareLawTest, LandingStateResetsOutsideTheFlareOnly)
+{
+	// landing, mode changed, flaring
+	EXPECT_TRUE(flare_law::landingReset(false, false, false));
+	EXPECT_TRUE(flare_law::landingReset(false, true, true));
+	EXPECT_TRUE(flare_law::landingReset(true, true, false));
+	EXPECT_FALSE(flare_law::landingReset(true, true, true));
+	EXPECT_FALSE(flare_law::landingReset(true, false, false));
+	EXPECT_FALSE(flare_law::landingReset(true, false, true));
+}
+
+TEST(FlareLawTest, EntryPitchIsTheTecsSetpointUnderTwoTenthsOfASecondOld)
+{
+	const float tecs = radians(-3.f);
+	const float measured = radians(2.f);
+	EXPECT_FLOAT_EQ(flare_law::entryPitch(true, 1199999, 1000000, tecs, measured), tecs);
+	EXPECT_FLOAT_EQ(flare_law::entryPitch(true, 1200000, 1000000, tecs, measured), measured);
+	EXPECT_FLOAT_EQ(flare_law::entryPitch(false, 1000001, 1000000, tecs, measured), measured);
+}
+
+TEST(FlareLawTest, NoseDownSeedRampsToTheFloor)
+{
+	const float entry = radians(-5.3f);
+
+	// -5.3 deg at entry, -5.3 + (0 - -5.3) x 0.5 = -2.65 deg at 0.15 s, the 0 deg floor from 0.3 s on
+	EXPECT_FLOAT_EQ(flare_law::seed(entry, PITCH_MIN, 0.f, 0.3f), entry);
+	EXPECT_NEAR(flare_law::seed(entry, PITCH_MIN, 0.15f, 0.3f), radians(-2.65f), radians(0.001f));
+	EXPECT_FLOAT_EQ(flare_law::seed(entry, PITCH_MIN, 0.3f, 0.3f), PITCH_MIN);
+	EXPECT_FLOAT_EQ(flare_law::seed(entry, PITCH_MIN, 2.f, 0.3f), PITCH_MIN);
+
+	// a seed above the floor stays
+	EXPECT_FLOAT_EQ(flare_law::seed(PITCH_ENTRY, PITCH_MIN, 0.f, 0.3f), PITCH_ENTRY);
+	EXPECT_FLOAT_EQ(flare_law::seed(PITCH_ENTRY, PITCH_MIN, 2.f, 0.3f), PITCH_ENTRY);
 }
 
 TEST(FlareLawTest, CeilingRunsFromEntryPitchToPitchMax)

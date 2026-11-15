@@ -45,13 +45,19 @@ param set-default UAVCAN_SUB_DPRES 1
 param set-default UAVCAN_SUB_RNG 1
 
 # EKF2
-# A quality hold longer than the 1 s terrain timeout aborts a mission landing on one bad range sample.
+# Range data counts again 0.2 s after a bad sample: the flare height comes from it.
 param set-default EKF2_RNG_QLTY_T 0.2
 
 # COM
+param set-default COM_ARM_MIS_REQ 1
+# Return on the thrust loss flag: the glide heads for the landing pattern.
+param set-default COM_ACT_FAIL_ACT 3
 param set-default COM_ARM_SDCARD 2
 param set-default COM_BAT_DISC_T 2.0
-param set-default COM_LOW_BAT_ACT 3
+# A failsafe acts at once: a Hold on final loiters near the ground.
+param set-default COM_FAIL_ACT_T 0
+# Return at emergency battery too: Land circles down wherever the wing is.
+param set-default COM_LOW_BAT_ACT 1
 param set-default COM_PREARM_MODE 2
 param set-default COM_RC_IN_MODE 0
 param set-default COM_RC_LOSS_T 2.0
@@ -60,17 +66,41 @@ param set-default GF_MAX_HOR_DIST 500
 param set-default GF_MAX_VER_DIST 60
 param set-default NAV_DLL_ACT 2
 
+# FAILURE DETECTOR
+# Thrust loss check on: gust deficits at full throttle last up to 1.8 s, and a cruise loss flags within 6 s.
+param set-default FD_FW_TL_TIME 2.2
+# Thrust is expected from this throttle up.
+param set-default FD_FW_TL_THR 0.7
+# At -0.5 m/s a gust deficit lasts as long as the check time.
+param set-default FD_FW_TL_RATE -0.8
+
 # NAV
 # Takeoff holds at 45 m and Return at 30 m; the fence sits at 60 m.
 # A landing abort climbs this far above the height it starts from.
 param set-default MIS_LND_ABRT_ALT 10
-# Arming writes the landing pattern from home and the launch heading.
+# Arming replaces a stored landing pattern that does not fit with one written from home and the launch heading.
 param set-default MIS_LP_EN 1
+# Written touchdown 15 m ahead of home on the launch heading.
+param set-default MIS_LP_AHEAD 15
+# Written touchdown 6 m right of the launch line.
+param set-default MIS_LP_OFFSET 6
+# Written final of 200 m from the orbit exit.
+param set-default MIS_LP_DIST 200
+# Written orbit at 22 m: over the 200 m final a 6.28 deg slope, inside FW_LND_ANG.
+param set-default MIS_LP_ALT 22
 param set-default MIS_TAKEOFF_ALT 45
+# Arming is refused on a mission without a landing.
+param set-default MIS_TKO_LAND_REQ 2
+# The approach orbit exits within 2 m of its height, so the final starts on the glide slope.
+param set-default NAV_FW_ALTL_RAD 2
 param set-default NAV_LOITER_RAD 60
 param set-default RTL_DESCEND_ALT 30
+# Return to home or a rally point lands instead of loitering.
+param set-default RTL_LAND_DELAY 0
 param set-default RTL_LOITER_RAD 60
 param set-default RTL_RETURN_ALT 30
+# Return flies the stored landing pattern.
+param set-default RTL_TYPE 1
 
 # RC
 param set-default RC_SBUS_PRT_CFG 300
@@ -86,9 +116,17 @@ param set-default FW_P_LIM_MAX 30.0
 param set-default FW_P_RMAX_NEG 30.0
 param set-default FW_P_RMAX_POS 30.0
 param set-default FW_R_LIM 50.0
-param set-default FW_WING_HEIGHT 0.1
+# Wings held level below 3.5 m: the roll-out from an orbit bank takes that height at landing sink.
+param set-default FW_WING_HEIGHT 3.5
 # Climb rate held low until a full-throttle climb is measured.
 param set-default FW_T_CLMB_MAX 3.0
+param set-default FW_T_HRATE_FF 0.7
+param set-default FW_T_SPDWEIGHT 0.5
+param set-default FW_T_THR_LOW_HGT 30
+# Glide reach per metre of height: a setpoint farther away raises the wings-level height.
+param set-default FW_TL_GLIDE 8
+# Wings level below 20 m after a thrust loss: the 22 m pattern orbit stays free to turn.
+param set-default FW_TL_LVL_ALT 20
 param set-default FW_WING_SPAN 2.12
 param set-default WEIGHT_BASE 3.78
 param set-default WEIGHT_GROSS 3.78
@@ -96,17 +134,37 @@ param set-default WEIGHT_GROSS 3.78
 # LAUNCH
 param set-default FW_LAUN_AC_T 0.1
 param set-default FW_LAUN_AC_THLD 20.0
+# Takeoff course from the GNSS track over 20 m: the launcher rail bends the compass heading.
+param set-default FW_LAUN_CRS_DST 20
 param set-default FW_LAUN_DETCN_ON 1
-param set-default FW_LAUN_MOT_DEL 0.5
+param set-default FW_LAUN_MOT_DEL 0.4
+# Launch gate at 2.5 m/s until three logged launches show the decision speed within 1.0 m/s of the exit speed.
+param set-default FW_LAUN_SPD_MIN 2.5
 # Pusher stopped on the launcher and commanded to zero in the flare.
 param set-default FW_THR_IDLE 0.0
 
 # LAND
-# Steepest landing slope: a landing pattern steeper than this is rejected.
-param set-default FW_LND_ANG 7.0
-param set-default FW_LND_FL_PMAX 15.0
-param set-default FW_LND_FL_TIME 0.5
-param set-default FW_LND_FLALT 1.0
+# No abort on a terrain timeout: an aborted landing loiters until commanded.
+param set-default FW_LND_ABORT 1
+param set-default FW_LND_AIRSPD 14
+param set-default FW_LND_ANG 6.3
+param set-default FW_LND_EARLYCFG 1
+# Integral of the flare sink error, for a steady error.
+param set-default FW_LND_FL_KI 2.5
+# Flare pitch from the sink error on range data: 7 deg per m/s landed softest in calm and in 10 m/s wind.
+param set-default FW_LND_FL_KP 7
+# Flare pitch stays under 4.5 deg: above it a wingtip touches first at gust roll.
+param set-default FW_LND_FL_PMAX 4
+param set-default FW_LND_FL_PMIN 4
+# Sink setpoint at the ground: 0.3 landed softer in calm than 0.5.
+param set-default FW_LND_FL_SINK 0.3
+param set-default FW_LND_FL_TIME 0.3
+# Flare trigger stays on FW_LND_FL_TIME: a time to touchdown of 1.4 s landed no softer in gusts.
+param set-default FW_LND_FL_TTD 0
+param set-default FW_LND_FLALT 1.5
+param set-default FW_LND_THRTC_SC 0.2
+# No headwind additive: 0.2 landed no softer and touched down 1 m/s faster.
+param set-default FW_LND_WIND_SC 0
 # The pitot reads wind on the parked wing.
 param set-default LNDFW_AIRSPD_MAX 8.0
 

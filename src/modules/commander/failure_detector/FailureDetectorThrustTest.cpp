@@ -55,7 +55,7 @@ protected:
 
 		for (int k = 1; k <= lroundf(seconds / kStep); k++) {
 			_t_us += 20000;
-			_tl.update(_t_us, armed, flying, throttle, energy_rate * 9.81f, p);
+			_tl.update(_t_us, armed, flying, _low, throttle, energy_rate * 9.81f, p);
 
 			if (changed < 0.f && _tl.lost() != before) {
 				changed = k * kStep;
@@ -76,6 +76,7 @@ protected:
 
 	ThrustLoss _tl{};
 	uint64_t _t_us{1000000};
+	bool _low{false};
 };
 
 TEST_F(FailureDetectorThrustTest, DeficitAtHighThrottleSets)
@@ -168,6 +169,48 @@ TEST_F(FailureDetectorThrustTest, StaleSampleResetsTimerKeepsState)
 	EXPECT_TRUE(_tl.lost());
 	_t_us += 600000;
 	fly(kStep, 0.9f, 1.f);
+	EXPECT_TRUE(_tl.lost());
+}
+
+TEST_F(FailureDetectorThrustTest, GainUnderTheClearRateDoesNotClear)
+{
+	lose();
+	// the clear rate is the negative of FD_FW_TL_RATE, +0.8 m/s: lift of +0.5 m/s is not thrust
+	fly(10.f, 0.9f, 0.5f);
+	EXPECT_TRUE(_tl.lost());
+	EXPECT_NEAR(fly(3.f, 0.9f, 0.9f), 2.f, 0.03f);
+}
+
+TEST_F(FailureDetectorThrustTest, UnderTheLevelHeightGainDoesNotClear)
+{
+	lose();
+	_low = true;
+	fly(10.f, 0.9f, 0.5f);
+	EXPECT_TRUE(_tl.lost());
+	// 1.8 m/s of lift reads about +0.85 m/s, above the clear rate
+	fly(10.f, 0.9f, 0.85f);
+	fly(10.f, 0.9f, 3.f);
+	EXPECT_TRUE(_tl.lost());
+	_low = false;
+	EXPECT_NEAR(fly(3.f, 0.9f, 3.f), 2.f, 0.03f);
+}
+
+TEST_F(FailureDetectorThrustTest, GainClearsWhileLanded)
+{
+	lose();
+	_low = true;
+	// a landed state read in the air must not hold the flag over a motor that pulls again
+	EXPECT_NEAR(fly(3.f, 0.9f, 1.f, true, false), 2.f, 0.03f);
+	EXPECT_FALSE(_tl.lost());
+}
+
+TEST_F(FailureDetectorThrustTest, SampleOlderThanTheLastIsDropped)
+{
+	cruise();
+	fly(1.9f, 0.9f, -1.4f);
+	// an older sample without the deficit would restart the 2 s timer; kept, it ends 2.0 - 1.9 + 0.02 s into this span
+	_tl.update(_t_us - 1000000, true, true, false, 0.9f, 0.f, kParam);
+	EXPECT_NEAR(fly(0.2f, 0.9f, -1.4f), 0.12f, 0.03f);
 	EXPECT_TRUE(_tl.lost());
 }
 

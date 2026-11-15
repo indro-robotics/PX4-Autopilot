@@ -182,6 +182,12 @@ public:
 	float get_default_loiter_rad() { return fabsf(_param_nav_loiter_rad.get()); }
 	bool get_default_loiter_CCW() { return _param_nav_loiter_rad.get() < -FLT_EPSILON; }
 
+	// the ESC checks raise the same flag: without the thrust loss check the flag keeps its stock meaning
+	bool thrust_lost() const
+	{
+		return (_vstatus.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) && _param_fd_fw_tl_time.get() > 0.f;
+	}
+
 	bool landing_pattern_enabled() const
 	{
 		return _param_mis_lp_en.get() == 1 && !_vstatus.is_vtol
@@ -469,6 +475,7 @@ private:
 		(ParamFloat<px4::params::MIS_LP_AHEAD>)       _param_mis_lp_ahead,
 		(ParamFloat<px4::params::MIS_LP_OFFSET>)      _param_mis_lp_offset,
 		(ParamFloat<px4::params::MIS_LP_DIST>)        _param_mis_lp_dist,
-		(ParamFloat<px4::params::MIS_LP_ALT>)         _param_mis_lp_alt
+		(ParamFloat<px4::params::MIS_LP_ALT>)         _param_mis_lp_alt,
+		(ParamFloat<px4::params::FD_FW_TL_TIME>)      _param_fd_fw_tl_time
 	)
 };
