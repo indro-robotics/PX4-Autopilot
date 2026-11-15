@@ -41,3 +41,9 @@ inline bool landingPatternInRange(float dist, float alt, float offset)
 {
 	return dist >= 50.f && alt >= 5.f && fabsf(offset) >= 5.f;
 }
+
+// an orbit more than 1 deg under the landing slope meets the slope from below, short of the flare; an angle that does not read judges nothing
+inline bool landingPatternSlopeFits(float dist, float alt, float land_angle_deg)
+{
+	return !(atan2f(alt, dist) * 57.29578f < land_angle_deg - 1.f);
+}

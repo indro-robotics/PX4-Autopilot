@@ -73,3 +73,22 @@ TEST(LandingPattern, ValueThatDoesNotReadIsRefused)
 	EXPECT_FALSE(landingPatternInRange(200.f, NAN, 6.f));
 	EXPECT_FALSE(landingPatternInRange(200.f, 22.f, NAN));
 }
+
+TEST(LandingPattern, OrbitMoreThanOneDegreeUnderTheLandingSlopeIsRefused)
+{
+	// FW_LND_ANG 6.3: the bound is 5.3 deg, 200 x tan(5.3 deg) = 18.55 m at MIS_LP_DIST 200
+	EXPECT_TRUE(landingPatternSlopeFits(200.f, 22.f, 6.3f));
+	EXPECT_TRUE(landingPatternSlopeFits(200.f, 18.6f, 6.3f));
+	EXPECT_FALSE(landingPatternSlopeFits(200.f, 18.5f, 6.3f));
+	// MIS_LP_ALT 5 at MIS_LP_DIST 200 is 1.43 deg
+	EXPECT_FALSE(landingPatternSlopeFits(200.f, 5.f, 6.3f));
+	// the stock FW_LND_ANG 5.0: the bound is 4.0 deg, 13.99 m at 200 m
+	EXPECT_TRUE(landingPatternSlopeFits(200.f, 14.1f, 5.f));
+	EXPECT_FALSE(landingPatternSlopeFits(200.f, 13.9f, 5.f));
+	// the length counts: 22 m over 300 m is 4.19 deg
+	EXPECT_FALSE(landingPatternSlopeFits(300.f, 22.f, 6.3f));
+	// the steep side is the mission check's: 30 m over 200 m, 8.53 deg, fits here
+	EXPECT_TRUE(landingPatternSlopeFits(200.f, 30.f, 6.3f));
+	// a landing angle that does not read judges nothing
+	EXPECT_TRUE(landingPatternSlopeFits(200.f, 5.f, NAN));
+}

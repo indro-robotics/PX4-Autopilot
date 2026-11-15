@@ -580,14 +580,7 @@ void TECSControl::_calcThrottleControlUpdate(float dt, const STERateLimit &limit
 	const float STE_rate_to_throttle = 1.0f / (limit.STE_rate_max - limit.STE_rate_min);
 
 	// Integral handling
-	if (param.throttle_max - param.throttle_min < FLT_EPSILON) {
-		// a motor held off, as in a glide, would otherwise wind the integrator down without bound
-		_throttle_integ_state = 0.f;
-
-	} else if (param.fast_descend > FLT_EPSILON) {
-		// the blend to idle leaves an energy deficit the integrator would carry onto the final as excess thrust
-
-	} else if (flag.airspeed_enabled) {
+	if (flag.airspeed_enabled) {
 		if (param.integrator_gain_throttle > FLT_EPSILON) {
 			// underspeed conditions zero out integration
 			float throttle_integ_input = (_getControlError(ste_rate) * param.integrator_gain_throttle) * dt *
@@ -597,7 +590,9 @@ void TECSControl::_calcThrottleControlUpdate(float dt, const STERateLimit &limit
 			if (_throttle_setpoint >= param.throttle_max) {
 				throttle_integ_input = math::min(0.f, throttle_integ_input);
 
-			} else if (_throttle_setpoint <= param.throttle_min) {
+			}
+
+			if (_throttle_setpoint <= param.throttle_min) {
 				throttle_integ_input = math::max(0.f, throttle_integ_input);
 			}
 

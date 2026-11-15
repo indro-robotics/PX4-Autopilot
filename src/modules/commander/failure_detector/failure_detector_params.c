@@ -221,9 +221,8 @@ PARAM_DEFINE_INT32(FD_ACT_MOT_TOUT, 100);
  * while the TECS specific energy rate is below FD_FW_TL_RATE. The check runs where TECS runs: in Manual,
  * Stabilized and Acro the flag keeps its state.
  * Above 0, a motor failure flag from any check, the ESC checks (FD_ACT_EN) included, also flies the glide: the
- * minimum airspeed, wings level under FW_TL_LVL_ALT, a Return without its climb, the orbit end of FW_TL_GLIDE and
- * no fast descent. In auto modes the glide holds the throttle at FW_THR_MAX, and a flag from the ESC checks does not
- * clear in flight.
+ * minimum airspeed, wings level under FW_TL_LVL_ALT, a Return without its climb and the orbit end of FW_TL_GLIDE.
+ * In auto modes the glide holds the throttle at FW_THR_MAX, and a flag from the ESC checks does not clear in flight.
  * Set to 0 to disable the check.
  *
  * @unit s

@@ -144,10 +144,11 @@ public:
 	}
 
 	// a dead motor pays for bank with height: 30 deg raises the sink rate by a quarter, 50 deg nearly doubles it
-	// the wing strike rule limits the bank only just above FW_WING_HEIGHT, too low to level out of 30 deg at glide sink: 10 deg under 10 m of range
+	// the wing strike rule limits the bank only just above FW_WING_HEIGHT, too low to level out of 30 deg at glide sink: 30 deg at 15 m of range down to 10 deg at 10 m
 	static float lateralAccelMax(bool flagged, bool auto_mode, float accel_max, bool range_valid, float range)
 	{
-		const float limit = (range_valid && range < 10.f) ? 9.80665f * 0.17633f : kAccelBank30;
+		const float bank_deg = 10.f + 20.f * fminf(fmaxf((range - 10.f) / 5.f, 0.f), 1.f);
+		const float limit = range_valid ? 9.80665f * tanf(bank_deg * 0.0174533f) : kAccelBank30;
 		return (flagged && auto_mode) ? fminf(accel_max, limit) : accel_max;
 	}
 

@@ -428,14 +428,21 @@ TEST(ThrustLossBank, AutoModesBankThirtyDegreesWithTheFlag)
 	EXPECT_FLOAT_EQ(ThrustLoss::lateralAccelMax(false, true, 11.69f, true, 40.f), 11.69f);
 }
 
-TEST(ThrustLossBank, TenDegreesWithAValidRangeUnderTenMetres)
+TEST(ThrustLossBank, RampFromThirtyDegreesAtFifteenMetresToTenAtTenMetres)
 {
-	// 9.80665 * tan(10 deg) = 1.729 m/s^2
+	// 9.80665 * tan(10 deg) = 1.729 m/s^2 at 10 m of valid range and under
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 10.f), 1.729f, 0.001f);
 	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 9.9f), 1.729f, 0.001f);
 	EXPECT_NEAR(atanf(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 3.f) / 9.80665f) * 180.f / static_cast<float>(M_PI), 10.f, 0.01f);
-	// from 10 m up the 30 deg of the glide stand
-	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 10.f), 5.662f, 0.001f);
-	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 10.1f), 5.662f, 0.001f);
+	// 4 deg per metre between: 20 deg at 12.5 m is 9.80665 * tan(20 deg) = 3.569 m/s^2, 26 deg at 14 m is 4.783 m/s^2
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 12.5f), 3.569f, 0.001f);
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 14.f), 4.783f, 0.001f);
+	// no step at either end: 0.1 m of range moves the limit by 0.4 deg, 9.80665 * 0.00698 / cos(30 deg)^2 = 0.0913 m/s^2 at most
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 10.1f), 1.729f, 0.095f);
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 14.9f), 5.662f, 0.095f);
+	// from 15 m up the 30 deg of the glide stand
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 15.f), 5.662f, 0.001f);
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, true, 40.f), 5.662f, 0.001f);
 	// a range that is not valid is no height above the ground, whatever it reads
 	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, false, 3.f), 5.662f, 0.001f);
 	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f, false, 0.f), 5.662f, 0.001f);

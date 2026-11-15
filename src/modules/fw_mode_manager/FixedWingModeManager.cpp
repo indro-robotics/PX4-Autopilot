@@ -530,6 +530,10 @@ FixedWingModeManager::update_in_air_states(const hrt_abstime now)
 	/* reset flag when airplane landed */
 	if (_landed) {
 		_completed_manual_takeoff = false;
+
+	} else if (_control_mode.flag_control_auto_enabled) {
+		// an auto mode flew the takeoff: a pilot mode entered in a glide under FW_AIRSPD_MIN would hold the takeoff pitch floor
+		_completed_manual_takeoff = true;
 	}
 }
 
@@ -1304,17 +1308,13 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 
 			_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-			_takeoff_floor_released = launchdetection::floorRelease(_takeoff_floor_released
-						  || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
-						      && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get()),
-						  _takeoff_underspeed, _airspeed_valid, _airspeed_eas, _param_fw_airspd_min.get());
+			_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
+						  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
 			_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
 								_takeoff_pitch_min.get()));
 			_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 			_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
-			_takeoff_underspeed = launchdetection::underspeedLatch(_takeoff_underspeed, _airspeed_valid, _airspeed_eas,
-					      _param_fw_airspd_min.get());
-			_ctrl_configuration_handler.setDisableUnderspeedProtection(!_takeoff_underspeed);
+			_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
 
 			if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_FLYING
 			    && _param_fw_tko_spdwt.get() >= 0.f) {
@@ -1463,17 +1463,13 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 		_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-		_takeoff_floor_released = launchdetection::floorRelease(_takeoff_floor_released
-					  || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
-					      && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get()),
-					  _takeoff_underspeed, _airspeed_valid, _airspeed_eas, _param_fw_airspd_min.get());
+		_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
+					  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
 		_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
 							_takeoff_pitch_min.get()));
 		_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 		_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
-		_takeoff_underspeed = launchdetection::underspeedLatch(_takeoff_underspeed, _airspeed_valid, _airspeed_eas,
-				      _param_fw_airspd_min.get());
-		_ctrl_configuration_handler.setDisableUnderspeedProtection(!_takeoff_underspeed);
+		_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
 
 		if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_FLYING
 		    && _param_fw_tko_spdwt.get() >= 0.f) {
@@ -2486,8 +2482,6 @@ FixedWingModeManager::reset_takeoff_state()
 	_launch_detected = false;
 
 	_takeoff_floor_released = false;
-
-	_takeoff_underspeed = false;
 
 	_takeoff_ground_alt = _current_altitude;
 }

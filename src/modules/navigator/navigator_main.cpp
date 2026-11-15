@@ -269,12 +269,21 @@ void Navigator::run()
 			_lp_armed = true;
 
 			if (landing_pattern_enabled()) {
+				float land_angle = NAN;
+				const param_t handle = param_find("FW_LND_ANG");
+
+				if (handle != PARAM_INVALID) {
+					param_get(handle, &land_angle);
+				}
+
+				const bool slope = landingPatternSlopeFits(_param_mis_lp_dist.get(), _param_mis_lp_alt.get(), land_angle);
 				// A pattern written from a moving vehicle sits around an airborne home.
 				const bool ready = (_home_pos.timestamp >= _vstatus.armed_time || _home_pos.manual_home)
 						   && home_global_position_valid() && PX4_ISFINITE(_local_pos.heading) && _local_pos.v_xy_valid
 						   && _local_pos.vx * _local_pos.vx + _local_pos.vy * _local_pos.vy < 3.f * 3.f
-						   && landingPatternInRange(_param_mis_lp_dist.get(), _param_mis_lp_alt.get(), _param_mis_lp_offset.get());
-				landingPatternWrite(_local_pos.heading, ready);
+						   && landingPatternInRange(_param_mis_lp_dist.get(), _param_mis_lp_alt.get(), _param_mis_lp_offset.get())
+						   && slope;
+				landingPatternWrite(_local_pos.heading, ready, slope);
 			}
 		}
 
@@ -1686,7 +1695,7 @@ Navigator::stop_capturing_images()
 	}
 }
 
-void Navigator::landingPatternWrite(float heading, bool ready)
+void Navigator::landingPatternWrite(float heading, bool ready, bool slope)
 {
 	mission_item_s items[3] {};
 	landingPatternItems(heading, items);
@@ -1695,7 +1704,14 @@ void Navigator::landingPatternWrite(float heading, bool ready)
 	_lp_mission_id = 0;
 
 	if (id == Mission::LANDING_PATTERN_FAILED) {
-		mavlink_log_critical(&_mavlink_log_pub, "Landing pattern not written");
+		if (slope) {
+			mavlink_log_critical(&_mavlink_log_pub, "Landing pattern not written");
+
+		} else {
+			mavlink_log_critical(&_mavlink_log_pub,
+					     "Landing pattern refused - MIS_LP_ALT over MIS_LP_DIST more than 1 deg under FW_LND_ANG");
+		}
+
 		landingPatternDisarm(*this);
 
 	} else if (id != 0) {

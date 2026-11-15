@@ -1505,12 +1505,11 @@ TEST_F(TerrainFollowerTest, CeilingBoundNeverDescendsInAPullUp)
 	setHeight(12.f, kTerrain + 18.f);
 	run(1.f);
 	ASSERT_EQ(out.state, TF::UPLIFT);
-	// range lost at 130 m: the loss climb is an altitude setpoint, 10 m over the ceiling
+	// range lost at 130 m; lift then carries the aircraft to 140 m, 10 m over the ceiling
 	in.raw_valid = false;
 	in.hagl_raw = NAN;
 	run(0.6f);
 	ASSERT_EQ(out.state, TF::RANGE_LOST);
-	EXPECT_NEAR(out.altitude, kTerrain + 40.f, 0.01f);
 	in.alt_amsl = kTerrain + 40.f;
 	run(1.f);
 	// range back over a 133 m crest: 7 m under the aircraft, under the 8 m floor
@@ -1538,9 +1537,9 @@ TEST_F(TerrainFollowerTest, CeilingBoundKeepsTheSinkLimit)
 	EXPECT_GE(out.height_rate, -p.sink);
 }
 
-TEST_F(TerrainFollowerTest, LossClimbOverTheCeilingKeepsTheFloor)
+TEST_F(TerrainFollowerTest, LossClimbEndsAtTheCeiling)
 {
-	// Return under a 130 m ceiling over ground at 125 m: UPLIFT at the ceiling, 5 m under its 12 m target
+	// Return under a 130 m ceiling: UPLIFT at 126 m over ground at 116 m, 2 m under its 12 m target
 	p.ttg = 0.f;
 	in.follow_wanted = false;
 	in.guard = true;
@@ -1550,33 +1549,27 @@ TEST_F(TerrainFollowerTest, LossClimbOverTheCeilingKeepsTheFloor)
 	setHeight(15.f);
 	run(2.1f);
 	ASSERT_EQ(out.state, TF::UPLIFT);
-	setHeight(14.f, kTerrain + 16.f);
+	setHeight(10.f, kTerrain + 16.f);
 	run(1.f);
-	// range lost for 3 s: RANGE_LOST climbs to 140 m, 10 m over the ceiling
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	// range lost at 126 m: FW_TF_LOSS_UP 10 asks for 136 m, the ceiling gives 130 m
 	in.raw_valid = false;
 	in.hagl_raw = NAN;
 	run(0.6f);
 	ASSERT_EQ(out.state, TF::RANGE_LOST);
-	in.alt_amsl = out.altitude;
-	run(2.4f);
-	// range back over ground at 125 m; the aircraft tracks the rate setpoint
-	const float terrain = kTerrain + 25.f;
-	float min_clear = INFINITY;
-	float alt = in.alt_amsl;
-
-	for (int i = 0; i < 1000; i++) {
-		setHeight(alt - terrain, terrain);
-		step();
-
-		if (out.use_rate) {
-			alt += out.height_rate * kDt;
-
-		} else if (std::isfinite(out.altitude)) {
-			alt += fminf(fmaxf(out.altitude - alt, -2.f * kDt), 3.f * kDt);
-		}
-
-		min_clear = fminf(min_clear, alt - terrain);
-	}
-
-	EXPECT_GE(min_clear, p.floor);
+	EXPECT_NEAR(out.altitude, kTerrain + 30.f, 0.01f);
+	// lift carries the aircraft to 133 m: the setpoint is that height, no descent
+	in.alt_amsl = kTerrain + 33.f;
+	step();
+	EXPECT_NEAR(out.altitude, kTerrain + 33.f, 0.01f);
+	// a plan at 135 m, above the ceiling, is not lowered
+	in.alt_amsl = kTerrain + 26.f;
+	in.nav_alt = kTerrain + 35.f;
+	step();
+	EXPECT_NEAR(out.altitude, kTerrain + 35.f, 0.01f);
+	// under a 150 m ceiling the 136 m of the loss climb stand
+	in.nav_alt = kTerrain + 10.f;
+	in.ceiling = kTerrain + 50.f;
+	step();
+	EXPECT_NEAR(out.altitude, kTerrain + 36.f, 0.01f);
 }

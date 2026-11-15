@@ -330,6 +330,9 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 			out.altitude = math::max(out.altitude, in.alt_amsl - used + (in.follow_wanted ? hagl_cmd : uplift));
 		}
 
+		// the loss climb ends at the ceiling as the guard's climb does; the plan and the present height stand above it
+		out.altitude = math::min(out.altitude, math::max(math::max(in.ceiling, in.nav_alt), in.alt_amsl));
+
 	} else if (_state == STANDBY && nav_alt > in.nav_alt) {
 		out.altitude = nav_alt;
 	}

@@ -320,38 +320,3 @@ TEST(LaunchLatch, AbortClearsOnceThePilotFliesItAway)
 	EXPECT_FALSE(abortLatch(true, false, false, false, true, true, 0.f, 14.f));
 	EXPECT_FALSE(abortLatch(true, false, true, false, true, true, 0.f, 14.f));
 }
-
-TEST(LaunchLatch, UnderspeedProtectionReturnsPastTheMinimumAirspeed)
-{
-	using launchdetection::underspeedLatch;
-	// the rail exit at 12.3 m/s is under FW_AIRSPD_MIN 14 m/s
-	EXPECT_FALSE(underspeedLatch(false, true, 12.3f, 14.f));
-	EXPECT_FALSE(underspeedLatch(false, true, 14.f, 14.f));
-	EXPECT_TRUE(underspeedLatch(false, true, 14.2f, 14.f));
-	// it stays on when a motor cut drops the airspeed back under the minimum
-	EXPECT_TRUE(underspeedLatch(true, true, 11.f, 14.f));
-	EXPECT_TRUE(underspeedLatch(true, false, 11.f, 14.f));
-	// a stale airspeed sets nothing
-	EXPECT_FALSE(underspeedLatch(false, false, 17.f, 14.f));
-}
-
-TEST(LaunchLatch, PitchFloorReleasesWhenTheAirspeedFallsBackUnderTheMinimum)
-{
-	using launchdetection::floorRelease;
-	using launchdetection::underspeedLatch;
-	// the climb at 17.4 m/s has passed FW_AIRSPD_MIN 14 m/s: the floor stays while the airspeed holds
-	bool latch = underspeedLatch(false, true, 17.4f, 14.f);
-	EXPECT_FALSE(floorRelease(false, latch, true, 17.4f, 14.f));
-	EXPECT_FALSE(floorRelease(false, latch, true, 14.f, 14.f));
-	// 1.3 s after a motor cut the airspeed reads 13.9 m/s: the floor goes, 3 s before the thrust loss flag
-	EXPECT_TRUE(floorRelease(false, latch, true, 13.9f, 14.f));
-	// for the rest of the climb, also once the glide is back above the minimum
-	EXPECT_TRUE(floorRelease(true, latch, true, 14.5f, 14.f));
-	EXPECT_TRUE(floorRelease(true, latch, false, 14.5f, 14.f));
-	// a shot that never reached the minimum keeps the floor: the rail exit at 12.3 m/s must still climb away
-	latch = underspeedLatch(false, true, 12.3f, 14.f);
-	EXPECT_FALSE(floorRelease(false, latch, true, 12.3f, 14.f));
-	EXPECT_FALSE(floorRelease(false, latch, true, 9.f, 14.f));
-	// an airspeed that does not read releases nothing
-	EXPECT_FALSE(floorRelease(false, true, false, 9.f, 14.f));
-}

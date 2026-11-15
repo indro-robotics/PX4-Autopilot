@@ -326,9 +326,8 @@ private:
 	// set by an aborted launch, cleared only by a disarm: the motor stays at idle in every mode
 	bool _launch_aborted{false};
 
-	// set once above FW_TKO_PMIN_ALT or by an airspeed back under the minimum, so a stopped motor is not pitched up on the way down
+	// set once above FW_TKO_PMIN_ALT, so a motor that stops later is not pitched up again on the way down
 	bool _takeoff_floor_released{false};
-	bool _takeoff_underspeed{false};
 
 	uORB::Subscription _launch_attitude_sub{ORB_ID(vehicle_attitude)};
 	uORB::Subscription _launch_gps_sub{ORB_ID(vehicle_gps_position)};

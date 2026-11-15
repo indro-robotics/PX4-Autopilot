@@ -111,7 +111,7 @@ PARAM_DEFINE_FLOAT(FW_LAUN_CRS_DST, 0.0f);
 /**
  * Takeoff speed weight
  *
- * TECS speed weight in Takeoff once the launch detection starts the motor. 2 holds FW_TKO_AIRSPD with pitch alone, so a motor that stops in the climb leaves the aircraft gliding at takeoff airspeed. -1 uses FW_T_SPDWEIGHT.
+ * TECS speed weight in Takeoff once the launch detection starts the motor. 2 flies FW_TKO_AIRSPD with pitch alone, above the Takeoff pitch floor. -1 uses FW_T_SPDWEIGHT.
  *
  * @min -1.0
  * @max 2.0
@@ -124,7 +124,7 @@ PARAM_DEFINE_FLOAT(FW_TKO_SPDWT, -1.0f);
 /**
  * Takeoff pitch floor height
  *
- * Height above the launch point from which the Takeoff pitch floor is FW_LND_FL_PMIN instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. 0 sets no height. At any height the floor changes the same way once the airspeed has passed FW_AIRSPD_MIN and reads under it again.
+ * Height above the launch point from which the Takeoff pitch floor is FW_LND_FL_PMIN instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. 0 keeps FW_TKO_PITCH_MIN for the whole Takeoff.
  *
  * @unit m
  * @min 0.0

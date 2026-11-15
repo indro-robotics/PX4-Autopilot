@@ -203,7 +203,6 @@ PARAM_DEFINE_FLOAT(FW_T_ALT_TC, 5.0f);
  * Fast descend: minimum altitude error
  *
  * Minimum altitude error needed to descend with max airspeed and minimal throttle.
- * The throttle integrator holds until the descent has blended out, 5 m above the altitude setpoint.
  * A negative value disables fast descend.
  *
  * @min -1.0

@@ -66,6 +66,8 @@ param set-default FW_R_TC 0.4
 param set-default FW_PSP_OFF 0.001
 # Level trim of the simulated wing at 18 m/s and 3.78 kg.
 param set-default FW_THR_TRIM 0.48
+# Climb of the simulated wing at full throttle and 18 m/s in calm air.
+param set-default FW_T_CLMB_MAX 8.4
 
 # Flare law tuned on the simulated wing; the aircraft flies the stock flare until its own law is tuned.
 # Integral of the flare sink error, for a steady error.

@@ -478,7 +478,7 @@ private:
 
 	void landingPatternItems(float heading, mission_item_s items[3]);
 
-	void landingPatternWrite(float heading, bool ready);
+	void landingPatternWrite(float heading, bool ready, bool slope);
 
 	bool landingPatternFlying();
 

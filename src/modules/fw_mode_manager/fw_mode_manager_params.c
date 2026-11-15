@@ -302,8 +302,7 @@ PARAM_DEFINE_INT32(FW_LND_EARLYCFG, 0);
  * Flare, minimum pitch
  *
  * Minimum pitch during landing flare. Also the pitch floor after a thrust loss (FD_FW_TL_TIME) in Takeoff and, with a
- * valid range to the ground, below twice FW_LND_FLALT outside a landing, and the Takeoff floor above FW_TKO_PMIN_ALT
- * or once the airspeed has passed FW_AIRSPD_MIN and reads under it again.
+ * valid range to the ground, below twice FW_LND_FLALT outside a landing, and the Takeoff floor above FW_TKO_PMIN_ALT.
  *
  * @unit deg
  * @min -5
@@ -758,7 +757,8 @@ PARAM_DEFINE_INT32(FW_TF_EN, 0);
  *
  * Flown between FW_TF_FLOOR + max(FW_TF_SINK x FW_TF_TTG + 1, 7) and 0.75 x the sensor range x cos(FW_TF_BANK),
  * 30.7 m with 50 m lidars. A Hold above 40 m does not follow. The steepest slope held is FW_T_CLMB_MAX over the
- * ground speed: 16.7 percent at 18 m/s with FW_T_CLMB_MAX 3.
+ * ground speed: 16.7 percent at 18 m/s with FW_T_CLMB_MAX 3. The guard does not climb above the fence ceiling, home
+ * plus GF_MAX_VER_DIST.
  *
  * @unit m
  * @min 15
