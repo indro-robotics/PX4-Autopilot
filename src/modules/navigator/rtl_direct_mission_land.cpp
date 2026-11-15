@@ -115,6 +115,18 @@ void RtlDirectMissionLand::on_activation()
 	MissionBase::on_activation();
 }
 
+void RtlDirectMissionLand::on_active()
+{
+	MissionBase::on_active();
+
+	// a thrust loss leaves no energy for the climb, so the land start item takes over in this cycle
+	if (_work_item_type == WorkItemType::WORK_ITEM_TYPE_CLIMB
+	    && (_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)) {
+		_work_item_type = WorkItemType::WORK_ITEM_TYPE_DEFAULT;
+		set_mission_items();
+	}
+}
+
 bool RtlDirectMissionLand::setNextMissionItem()
 {
 	return (goToNextPositionItem(true) == PX4_OK);

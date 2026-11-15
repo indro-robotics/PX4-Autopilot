@@ -2235,17 +2235,32 @@ FixedWingModeManager::Run()
 			const float height = _local_pos.dist_bottom_valid ? _local_pos.dist_bottom : _current_altitude - _reference_altitude;
 			const bool landing = _control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT
 					     || _control_mode_current == FW_POSCTRL_MODE_AUTO_LANDING_CIRCULAR;
+			const bool takeoff = _control_mode_current == FW_POSCTRL_MODE_AUTO_TAKEOFF
+					     || _control_mode_current == FW_POSCTRL_MODE_AUTO_TAKEOFF_NO_NAV;
+			const float dist_sp = _pos_sp_triplet.current.valid ? get_distance_to_next_waypoint(_current_latitude,
+					      _current_longitude, _pos_sp_triplet.current.lat, _pos_sp_triplet.current.lon) : 0.f;
+			// below this height the setpoint is out of glide reach, and a turn toward it only loses height
+			const float level_height = _param_fw_tl_lvl_alt.get() + (PX4_ISFINITE(dist_sp) ? dist_sp : 0.f) /
+						   _param_fw_tl_glide.get();
 
-			if (height < _param_fw_tl_lvl_alt.get() && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT) {
+			if (height < level_height && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT) {
 				_ctrl_configuration_handler.setLateralAccelMax(0.f);
 			}
 
-			if (height < 2.f * _param_fw_lnd_flalt.get() && !landing) {
+			if (takeoff || (height < 2.f * _param_fw_lnd_flalt.get() && !landing)) {
 				_ctrl_configuration_handler.setPitchMin(radians(_param_fw_lnd_fl_pmin.get()));
+			}
+
+			if (!_flare_states.flaring) {
+				_ctrl_configuration_handler.setSpeedWeight(2.f);
 			}
 
 			if (_landed) {
 				_ctrl_configuration_handler.setThrottleMax(_param_fw_thr_idle.get());
+
+			} else if (!landing) {
+				// full demand makes a working motor show the energy gain that clears the flag in flight
+				_ctrl_configuration_handler.setThrottleMin(_param_fw_thr_max.get());
 			}
 		}
 

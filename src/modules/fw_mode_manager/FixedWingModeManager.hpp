@@ -831,6 +831,7 @@ private:
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::FW_R_LIM>) _param_fw_r_lim,
 		(ParamFloat<px4::params::FW_TL_LVL_ALT>) _param_fw_tl_lvl_alt,
+		(ParamFloat<px4::params::FW_TL_GLIDE>) _param_fw_tl_glide,
 
 		(ParamFloat<px4::params::NPFG_PERIOD>) _param_npfg_period,
 		(ParamFloat<px4::params::NPFG_DAMPING>) _param_npfg_damping,
