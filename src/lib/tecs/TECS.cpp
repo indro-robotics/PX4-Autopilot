@@ -584,6 +584,9 @@ void TECSControl::_calcThrottleControlUpdate(float dt, const STERateLimit &limit
 		// a motor held off, as in a glide, would otherwise wind the integrator down without bound
 		_throttle_integ_state = 0.f;
 
+	} else if (param.fast_descend > FLT_EPSILON) {
+		// the blend to idle leaves an energy deficit the integrator would carry onto the final as excess thrust
+
 	} else if (flag.airspeed_enabled) {
 		if (param.integrator_gain_throttle > FLT_EPSILON) {
 			// underspeed conditions zero out integration

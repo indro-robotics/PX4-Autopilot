@@ -149,8 +149,8 @@ void Soaring::enterThermal(const Input &in, const Params &p, float climb_expecte
 
 void Soaring::thermalStep(const Input &in, const Params &p, float dt, float netto, float te, float radius)
 {
-	_s[2] -= (in.vn - in.wind_n) * dt;
-	_s[3] -= (in.ve - in.wind_e) * dt;
+	_s[2] -= (in.vn - p.drift * in.wind_n) * dt;
+	_s[3] -= (in.ve - p.drift * in.wind_e) * dt;
 	_update_s += dt;
 
 	if (_update_s >= 0.2f) {
@@ -200,9 +200,9 @@ void Soaring::thermalStep(const Input &in, const Params &p, float dt, float nett
 		}
 	}
 
-	// the commanded centre drifts with the air mass, then closes on the estimate
-	_cx += in.wind_n * dt;
-	_cy += in.wind_e * dt;
+	// the commanded centre drifts with the thermal, then closes on the estimate
+	_cx += p.drift * in.wind_n * dt;
+	_cy += p.drift * in.wind_e * dt;
 	const float ex = in.x + _s[2] - _cx;
 	const float ey = in.y + _s[3] - _cy;
 	const float d = sqrtf(ex * ex + ey * ey);
@@ -333,7 +333,11 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 
 	uint8_t inhibit = REASON_NONE;
 
-	if (!in.allowed || gap) {
+	// a gap sample carrying a reason that does not latch would let soaring resume with no command
+	if (gap) {
+		inhibit = REASON_MODE;
+
+	} else if (!in.allowed) {
 		inhibit = in.inhibit_reason != REASON_NONE ? in.inhibit_reason : (uint8_t)REASON_MODE;
 
 	} else if (!in.wind_valid) {
@@ -439,8 +443,10 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 
 	// the path angle change to the glide is the pitch change a cut needs: TECS alone takes 30 s to find it
 	if (_state == State::GLIDE && prev != State::GLIDE && prev != State::THERMAL) {
+		// the integrator holds the motor climb alone: lift beyond FW_T_CLMB_MAX, or any climb out of a Hold, is not in it
+		const float climb = prev == State::CLIMB ? fminf(_climb_f, p.clmb_max) : 0.f;
 		_cut_count++;
-		_cut_pitch_step = clampf(-_climb_f / fmaxf(tas, 5.f) - sink(p, cruise_cas, ratio, 0.f) / fmaxf(cruise_cas * ratio, 5.f),
+		_cut_pitch_step = clampf(-climb / fmaxf(tas, 5.f) - sink(p, cruise_cas, ratio, 0.f) / fmaxf(cruise_cas * ratio, 5.f),
 					 -0.5f, 0.f);
 	}
 

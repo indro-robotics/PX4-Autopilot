@@ -124,7 +124,7 @@ PARAM_DEFINE_FLOAT(FW_TKO_SPDWT, -1.0f);
 /**
  * Takeoff pitch floor height
  *
- * Height above the launch point from which the Takeoff pitch floor is FW_LND_FL_PMIN instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. 0 keeps FW_TKO_PITCH_MIN for the whole Takeoff.
+ * Height above the launch point from which the Takeoff pitch floor is FW_LND_FL_PMIN instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. 0 sets no height. At any height the floor changes the same way once the airspeed has passed FW_AIRSPD_MIN and reads under it again.
  *
  * @unit m
  * @min 0.0

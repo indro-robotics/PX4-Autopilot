@@ -391,7 +391,32 @@ TEST_F(TerrainFollowerTest, NoReturnRequestInReturn)
 	EXPECT_EQ(requests, 0);
 }
 
-TEST_F(TerrainFollowerTest, StuckLowSensorFaultsAfterFortyMetres)
+TEST_F(TerrainFollowerTest, StuckLowSensorClimbsToTheCeilingOnly)
+{
+	// Mission under a ceiling 100 m over the ground: a reading stuck at 5 m holds the pull-up, and no fault ends it
+	p.ttg = 0.f;
+	in.ceiling = kTerrain + 100.f;
+	follow();
+	setHeight(5.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	int requests = 0;
+
+	for (int i = 0; i < 4000; i++) {
+		in.alt_amsl += (out.use_rate ? out.height_rate : 0.f) * kDt;
+		requests += step().request_return;
+		ASSERT_EQ(out.state, TF::PULL_UP) << in.alt_amsl;
+		ASSERT_GE(out.height_rate, 0.f) << in.alt_amsl;
+	}
+
+	// 80 s after the entry at 105 m: the climb has stopped at the ceiling, and the 6 s request was the one Return
+	EXPECT_GT(in.alt_amsl, kTerrain + 98.f);
+	EXPECT_LE(in.alt_amsl, kTerrain + 100.f);
+	EXPECT_LT(out.height_rate, 0.1f);
+	EXPECT_EQ(requests, 1);
+}
+
+TEST_F(TerrainFollowerTest, MissionPullUpClimbsPastFortyMetres)
 {
 	p.ttg = 0.f;
 	follow();
@@ -400,25 +425,222 @@ TEST_F(TerrainFollowerTest, StuckLowSensorFaultsAfterFortyMetres)
 	ASSERT_EQ(out.state, TF::PULL_UP);
 	const float entry = in.alt_amsl;
 
-	while (in.alt_amsl < entry + 39.f) {
+	while (in.alt_amsl < entry + 60.f) {
 		in.alt_amsl += 3.f * kDt;
 		step();
 	}
 
 	EXPECT_EQ(out.state, TF::PULL_UP);
+	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+}
 
-	while (in.alt_amsl < entry + 41.f) {
-		in.alt_amsl += 3.f * kDt;
-		step();
+TEST_F(TerrainFollowerTest, CeilingHoldsTheGuardAndRequestsOneReturn)
+{
+	// Mission with the guard under a ceiling 20 m over the ground: UPLIFT wants 12 m over a crest 9 m high
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 5.f;
+	in.ceiling = kTerrain + 20.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	int requests = 0;
+
+	// 0.5 m under the ceiling and descending to 12 m over the plain: the bound does not hold, so no request
+	setHeight(19.5f);
+
+	for (int i = 0; i < 25; i++) {
+		requests += step().request_return;
 	}
 
-	EXPECT_EQ(out.state, TF::FAULT);
-	EXPECT_FALSE(out.use_rate);
-	EXPECT_FALSE(out.cap_bank);
-	in.eligible = false;
-	EXPECT_EQ(step().state, TF::FAULT);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	EXPECT_LT(out.height_rate, 0.f);
+	EXPECT_EQ(requests, 0);
+	// 2 m under the ceiling over a crest at 109 m: the bound slows the climb to 0.5 m/s, still short of the ceiling
+	setHeight(9.f, kTerrain + 9.f);
+
+	for (int i = 0; i < 5; i++) {
+		requests += step().request_return;
+	}
+
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	EXPECT_NEAR(out.height_rate, 0.5f, 1e-3f);
+	EXPECT_EQ(requests, 0);
+	// 10.5 m over the crest and 0.5 m under the ceiling: (12 - 10.5) / 4 = 0.375 m/s wanted, (20 - 19.5) / 4 = 0.125 m/s
+	setHeight(10.5f, kTerrain + 9.f);
+
+	for (int i = 0; i < 150; i++) {
+		requests += step().request_return;
+	}
+
+	EXPECT_EQ(out.state, TF::UPLIFT);
+	EXPECT_NEAR(out.height_rate, 0.125f, 1e-3f);
+	EXPECT_EQ(requests, 1);
+	// in Return the bound holds the same way, with no request
 	tf.reset();
-	EXPECT_EQ(step().state, TF::OFF);
+	in.in_return = true;
+	setHeight(15.f);
+	run(2.1f);
+	setHeight(10.5f, kTerrain + 9.f);
+	requests = 0;
+
+	for (int i = 0; i < 150; i++) {
+		requests += step().request_return;
+	}
+
+	EXPECT_EQ(out.state, TF::UPLIFT);
+	EXPECT_NEAR(out.height_rate, 0.125f, 1e-3f);
+	EXPECT_EQ(requests, 0);
+}
+
+TEST_F(TerrainFollowerTest, PullUpFliesTheMinimumAirspeedAndTheClimbLimit)
+{
+	p.ttg = 0.f;
+	follow();
+	EXPECT_FALSE(out.min_airspeed);
+	setHeight(5.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	// FW_AIRSPD_MIN and FW_T_CLMB_MAX
+	EXPECT_TRUE(out.min_airspeed);
+	EXPECT_TRUE(out.use_rate);
+	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+	setHeight(13.f);
+	run(1.1f);
+	ASSERT_EQ(out.state, TF::FOLLOW);
+	EXPECT_FALSE(out.min_airspeed);
+}
+
+TEST_F(TerrainFollowerTest, HoldKeepsThePullUpHeight)
+{
+	// guard in a Hold 20 m over the plain; one lap crosses a crest that leaves 7 m
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_hold = true;
+	in.nav_alt = kTerrain + 20.f;
+	setHeight(20.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::STANDBY);
+	EXPECT_TRUE(isnan(out.altitude));
+	setHeight(7.f, kTerrain + 13.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	// recovered 13 m over the crest at 126 m, inside the band UPLIFT holds
+	setHeight(13.f, kTerrain + 13.f);
+	run(1.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	// the plain on the rest of the lap: the plan stays at the pull-up height
+	setHeight(26.f);
+	run(30.f);
+	EXPECT_EQ(out.state, TF::STANDBY);
+	EXPECT_NEAR(out.altitude, kTerrain + 26.f, 1e-3f);
+	// the next crest: the guard counts from the kept height, 13 m over it and over the 1.5 x 8 = 12 m that lifts
+	setHeight(13.f, kTerrain + 13.f);
+	run(5.f);
+	EXPECT_EQ(out.state, TF::STANDBY);
+	// a Mission leg after the Hold flies its own altitude
+	in.in_hold = false;
+	setHeight(26.f);
+	run(0.1f);
+	EXPECT_TRUE(isnan(out.altitude));
+}
+
+TEST_F(TerrainFollowerTest, HoldHeightRaisesTheGuardTargets)
+{
+	// guard in a Hold 5 m over the plain; a pull-up from UPLIFT recovers 13 m over the ground
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_hold = true;
+	in.nav_alt = kTerrain + 5.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(7.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	setHeight(13.f);
+	run(1.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	// UPLIFT holds the kept 113 m, not the 112 m of 1.5 x 8 over the ground, once the 1 s terrain rate filter settles
+	run(3.f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	EXPECT_NEAR(out.height_rate, 0.f, 0.01f);
+}
+
+TEST_F(TerrainFollowerTest, FollowInHoldKeepsThePullUpHeight)
+{
+	// follow in a Hold planned at 130 m; a pull-up over a crest at 122 m recovers at 135 m, over the 120 m FW_TF_MAXDN allows
+	p.ttg = 0.f;
+	in.in_hold = true;
+	follow();
+	setHeight(7.f, kTerrain + 22.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	setHeight(13.f, kTerrain + 22.f);
+	run(1.1f);
+	ASSERT_EQ(out.state, TF::FOLLOW);
+	// over the plain the follow wants 25 m, 10 m down, and the kept height holds it level
+	setHeight(35.f);
+	run(0.5f);
+	ASSERT_EQ(out.state, TF::FOLLOW);
+	EXPECT_GE(out.height_rate, -0.01f);
+}
+
+TEST_F(TerrainFollowerTest, UpliftLossAboveTheBandFliesThePlan)
+{
+	// a guard climbing down from a soaring height: the beam leaves the ground 40 m under, over the 12 to 14 m UPLIFT holds
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(40.f, kTerrain + 2.f);
+	step();
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	EXPECT_EQ(run(0.6f).state, TF::STANDBY);
+	EXPECT_FALSE(out.use_rate);
+	EXPECT_TRUE(isnan(out.altitude));
+	// inside the band the loss climbs
+	tf.reset();
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(13.f);
+	step();
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	EXPECT_EQ(run(0.6f).state, TF::RANGE_LOST);
+}
+
+TEST_F(TerrainFollowerTest, ReturnLossUnderTheFloorNeverFaults)
+{
+	// the last reading 7 m under the aircraft, then no range: no fault hands the altitude back to the Return
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	setHeight(13.f);
+	run(0.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(7.f);
+	step();
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	EXPECT_EQ(run(0.6f).state, TF::RANGE_LOST);
+	EXPECT_EQ(run(60.f).state, TF::RANGE_LOST);
+	EXPECT_GT(out.altitude, kTerrain + 10.f);
+}
+
+TEST_F(TerrainFollowerTest, OriginAltitudeChangeShiftsNothing)
+{
+	// a height reset of 5 m, then an origin moved 20 m up with z, the altitude above sea level unchanged
+	EXPECT_FLOAT_EQ(TF::resetShift(5.f, 92.5f, 92.5f), -5.f);
+	EXPECT_FLOAT_EQ(TF::resetShift(20.f, 112.5f, 92.5f), 0.f);
 }
 
 TEST_F(TerrainFollowerTest, SinkLimited)
@@ -873,15 +1095,18 @@ TEST_F(TerrainFollowerTest, RangeLostGuardTargetIsUplift)
 	in.nav_alt = kTerrain + 10.f;
 	setHeight(15.f);
 	run(2.1f);
+	// lost inside the 12 to 14 m band UPLIFT holds
+	setHeight(13.f);
+	step();
 	ASSERT_EQ(out.state, TF::UPLIFT);
 	in.raw_valid = false;
 	run(0.6f);
 	ASSERT_EQ(out.state, TF::RANGE_LOST);
-	// lost at 115 m; the beam returns at 10 m over ground at 120 m
+	// lost at 113 m; the beam returns at 10 m over ground at 120 m
 	setHeight(10.f, kTerrain + 20.f);
 	step();
 	ASSERT_EQ(out.state, TF::RANGE_LOST);
-	// max(nav 110, loss 115 + 10, 130 - 10 + 1.5 x 8 = 132)
+	// max(nav 110, loss 113 + 10, 130 - 10 + 1.5 x 8 = 132)
 	EXPECT_NEAR(out.altitude, kTerrain + 32.f, 0.1f);
 }
 
@@ -974,6 +1199,9 @@ TEST_F(TerrainFollowerTest, ReturnRangeLossFaultsAfterThirtySeconds)
 	in.nav_alt = kTerrain + 10.f;
 	setHeight(15.f);
 	run(2.1f);
+	// lost inside the 12 to 14 m band UPLIFT holds
+	setHeight(13.f);
+	step();
 	ASSERT_EQ(out.state, TF::UPLIFT);
 	in.raw_valid = false;
 	in.hagl_raw = NAN;
@@ -996,6 +1224,9 @@ TEST_F(TerrainFollowerTest, RangeLostBeforeReturnFaultsInReturn)
 	in.nav_alt = kTerrain + 10.f;
 	setHeight(15.f);
 	run(2.1f);
+	// lost inside the 12 to 14 m band UPLIFT holds
+	setHeight(13.f);
+	step();
 	ASSERT_EQ(out.state, TF::UPLIFT);
 	in.raw_valid = false;
 	in.hagl_raw = NAN;
@@ -1134,6 +1365,9 @@ TEST_F(TerrainFollowerTest, ReturnLossFaultsThroughRangeBursts)
 	in.nav_alt = kTerrain + 10.f;
 	setHeight(15.f);
 	run(2.1f);
+	// lost inside the 12 to 14 m band UPLIFT holds
+	setHeight(13.f);
+	step();
 	ASSERT_EQ(out.state, TF::UPLIFT);
 	in.raw_valid = false;
 	in.hagl_raw = NAN;
@@ -1178,7 +1412,7 @@ TEST_F(TerrainFollowerTest, ReturnPullUpClimbsPastFortyMetres)
 	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
 }
 
-TEST_F(TerrainFollowerTest, FenceCeilingBoundsTheClimbInReturnOnly)
+TEST_F(TerrainFollowerTest, FenceCeilingBoundsTheClimbInEveryMode)
 {
 	p.ttg = 0.f;
 	in.follow_wanted = false;
@@ -1200,10 +1434,10 @@ TEST_F(TerrainFollowerTest, FenceCeilingBoundsTheClimbInReturnOnly)
 	setHeight(5.f, kTerrain + 25.f);
 	EXPECT_EQ(run(1.f).state, TF::PULL_UP);
 	EXPECT_NEAR(out.height_rate, 0.f, 1e-3f);
-	// in Hold the fence Return acts, so the guard climbs through the ceiling
+	// in Mission and Hold the bound holds the same way
 	in.in_return = false;
 	EXPECT_EQ(step().state, TF::PULL_UP);
-	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+	EXPECT_NEAR(out.height_rate, 0.f, 1e-3f);
 }
 
 TEST_F(TerrainFollowerTest, HeightResetKeepsTheLossClimb)
@@ -1220,31 +1454,27 @@ TEST_F(TerrainFollowerTest, HeightResetKeepsTheLossClimb)
 	EXPECT_NEAR(out.altitude, kTerrain + 45.f, 0.01f);
 }
 
-TEST_F(TerrainFollowerTest, HeightResetKeepsTheFaultCap)
+TEST_F(TerrainFollowerTest, HeightResetKeepsTheHoldHeight)
 {
-	p.ttg = 0.f;
-	follow();
-	setHeight(5.f);
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_hold = true;
+	in.nav_alt = kTerrain + 20.f;
+	setHeight(20.f);
+	run(2.1f);
+	setHeight(7.f, kTerrain + 13.f);
 	run(0.3f);
 	ASSERT_EQ(out.state, TF::PULL_UP);
-	const float entry = in.alt_amsl;
+	setHeight(13.f, kTerrain + 13.f);
+	run(1.1f);
+	setHeight(26.f);
+	run(1.f);
+	ASSERT_NEAR(out.altitude, kTerrain + 26.f, 1e-3f);
+	// a 5 m reset raises the estimate, not the aircraft
 	in.alt_amsl += 5.f;
 	tf.heightReset(5.f);
-
-	// 39 m of climb over the pull-up point, 44 m of estimate
-	while (in.alt_amsl < entry + 44.f) {
-		in.alt_amsl += 3.f * kDt;
-		step();
-	}
-
-	EXPECT_EQ(out.state, TF::PULL_UP);
-
-	while (in.alt_amsl < entry + 46.f) {
-		in.alt_amsl += 3.f * kDt;
-		step();
-	}
-
-	EXPECT_EQ(out.state, TF::FAULT);
+	step();
+	EXPECT_NEAR(out.altitude, kTerrain + 31.f, 1e-3f);
 }
 
 TEST_F(TerrainFollowerTest, HeightResetKeepsTheHeightWithoutRange)
@@ -1258,4 +1488,95 @@ TEST_F(TerrainFollowerTest, HeightResetKeepsTheHeightWithoutRange)
 	tf.heightReset(5.f);
 	step();
 	EXPECT_FLOAT_EQ(out.hagl_used, 30.f);
+}
+
+TEST_F(TerrainFollowerTest, CeilingBoundNeverDescendsInAPullUp)
+{
+	// Return under a 130 m ceiling, UPLIFT held at the ceiling over ground at 118 m
+	p.ttg = 0.f;
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	in.ceiling = kTerrain + 30.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(12.f, kTerrain + 18.f);
+	run(1.f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	// range lost at 130 m: the loss climb is an altitude setpoint, 10 m over the ceiling
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	EXPECT_NEAR(out.altitude, kTerrain + 40.f, 0.01f);
+	in.alt_amsl = kTerrain + 40.f;
+	run(1.f);
+	// range back over a 133 m crest: 7 m under the aircraft, under the 8 m floor
+	setHeight(7.f, kTerrain + 33.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	EXPECT_GE(out.height_rate, 0.f);
+}
+
+TEST_F(TerrainFollowerTest, CeilingBoundKeepsTheSinkLimit)
+{
+	p.ttg = 0.f;
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	in.ceiling = kTerrain + 30.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	// 20 m over the ceiling with the ground 18 m under: UPLIFT wants -1.5 m/s, FW_TF_SINK is 2
+	setHeight(18.f, kTerrain + 32.f);
+	run(0.5f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	EXPECT_GE(out.height_rate, -p.sink);
+}
+
+TEST_F(TerrainFollowerTest, LossClimbOverTheCeilingKeepsTheFloor)
+{
+	// Return under a 130 m ceiling over ground at 125 m: UPLIFT at the ceiling, 5 m under its 12 m target
+	p.ttg = 0.f;
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	in.ceiling = kTerrain + 30.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(14.f, kTerrain + 16.f);
+	run(1.f);
+	// range lost for 3 s: RANGE_LOST climbs to 140 m, 10 m over the ceiling
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	in.alt_amsl = out.altitude;
+	run(2.4f);
+	// range back over ground at 125 m; the aircraft tracks the rate setpoint
+	const float terrain = kTerrain + 25.f;
+	float min_clear = INFINITY;
+	float alt = in.alt_amsl;
+
+	for (int i = 0; i < 1000; i++) {
+		setHeight(alt - terrain, terrain);
+		step();
+
+		if (out.use_rate) {
+			alt += out.height_rate * kDt;
+
+		} else if (std::isfinite(out.altitude)) {
+			alt += fminf(fmaxf(out.altitude - alt, -2.f * kDt), 3.f * kDt);
+		}
+
+		min_clear = fminf(min_clear, alt - terrain);
+	}
+
+	EXPECT_GE(min_clear, p.floor);
 }

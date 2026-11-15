@@ -302,7 +302,8 @@ PARAM_DEFINE_INT32(FW_LND_EARLYCFG, 0);
  * Flare, minimum pitch
  *
  * Minimum pitch during landing flare. Also the pitch floor after a thrust loss (FD_FW_TL_TIME) in Takeoff and, with a
- * valid range to the ground, below twice FW_LND_FLALT outside a landing, and the Takeoff floor above FW_TKO_PMIN_ALT.
+ * valid range to the ground, below twice FW_LND_FLALT outside a landing, and the Takeoff floor above FW_TKO_PMIN_ALT
+ * or once the airspeed has passed FW_AIRSPD_MIN and reads under it again.
  *
  * @unit deg
  * @min -5
@@ -724,9 +725,10 @@ PARAM_DEFINE_FLOAT(FW_TL_LVL_ALT, 20.f);
  * Horizontal distance per metre of height that a thrust loss glide is assumed to reach in still air. Once the motor
  * failure flag is set, the wings-level height (FW_TL_LVL_ALT) rises by the distance to the active position setpoint
  * over this ratio, and an orbit ahead of a landing item ends once the height above the touchdown point is at most the
- * distance to it over this ratio plus 10 m. Wind scales the ratio by ground speed over airspeed, held to 0.5 to 1.2:
- * along the course to the setpoint for the wings-level height, along the landing course for the orbit. With the flag
- * set an auto mode banks at most 30 deg.
+ * distance to it, plus the arc of the turn to its bearing at 30 deg of bank, over this ratio plus 10 m. Wind scales the
+ * ratio by ground speed over airspeed, held to 0.5 to 1.2: along the course to the setpoint for the wings-level height,
+ * along the landing course for the orbit. With the flag set an auto mode banks at most 30 deg, and at most 10 deg with a
+ * valid range to the ground under 10 m.
  *
  * @min 1.0
  * @max 30.0
@@ -771,6 +773,9 @@ PARAM_DEFINE_FLOAT(FW_TF_HAGL, 25.f);
  * Terrain follow floor
  *
  * Height above ground under which the pull-up starts; the guard lifts under 1.5 times it.
+ * The pull-up flies FW_AIRSPD_MIN and climbs at FW_T_CLMB_MAX until it recovers. In every mode the follower climbs at
+ * most to the fence ceiling, home plus GF_MAX_VER_DIST, or 120 m above home without it. In Mission and Hold the ceiling
+ * or 6 s under this height requests one Return. A Hold keeps the height its pull-up reached until the Hold ends.
  *
  * @unit m
  * @min 3
@@ -826,7 +831,9 @@ PARAM_DEFINE_FLOAT(FW_TF_BANK, 35.f);
 /**
  * Terrain follow climb on range loss
  *
- * Climb above the altitude where the range was lost, held until the range returns.
+ * Climb above the altitude where the range was lost, held until the range returns. A guard that loses the range more
+ * than 2 m above 1.5 x FW_TF_FLOOR flies the plan instead. In Return the follower turns off 30 s after the loss, unless
+ * the last range read under FW_TF_FLOOR.
  *
  * @unit m
  * @min 0

@@ -187,12 +187,9 @@ FixedWingModeManager::airspeed_poll()
 	if (_param_fw_use_airspd.get() && _airspeed_validated_sub.update(&airspeed_validated)) {
 
 		// do not use synthetic airspeed as it's for the use here not reliable enough
-		if (PX4_ISFINITE(airspeed_validated.calibrated_airspeed_m_s)
-		    && airspeed_validated.airspeed_source != airspeed_validated_s::SOURCE_SYNTHETIC) {
-
-			_airspeed_eas = airspeed_validated.calibrated_airspeed_m_s;
-			_time_airspeed_eas = airspeed_validated.timestamp;
-		}
+		airspeed_validity::sample(airspeed_validated.calibrated_airspeed_m_s,
+					  airspeed_validated.airspeed_source == airspeed_validated_s::SOURCE_SYNTHETIC,
+					  airspeed_validated.timestamp, _airspeed_eas, _time_airspeed_last_valid);
 
 #ifdef CONFIG_FW_SOARING
 
@@ -208,7 +205,7 @@ FixedWingModeManager::airspeed_poll()
 
 	// no airspeed updates for one second --> declare invalid
 	// this flag is used for some logic like: exiting takeoff, flaps retraction
-	_airspeed_valid = hrt_elapsed_time(&_time_airspeed_last_valid) < 1_s;
+	_airspeed_valid = airspeed_validity::valid(hrt_absolute_time(), _time_airspeed_last_valid);
 }
 
 void
@@ -1307,14 +1304,16 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 
 			_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-			_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
-						  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
+			_takeoff_floor_released = launchdetection::floorRelease(_takeoff_floor_released
+						  || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
+						      && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get()),
+						  _takeoff_underspeed, _airspeed_valid, _airspeed_eas, _param_fw_airspd_min.get());
 			_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
 								_takeoff_pitch_min.get()));
 			_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 			_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
-			_takeoff_underspeed = launchdetection::underspeedLatch(_takeoff_underspeed, hrt_elapsed_time(&_time_airspeed_eas) < 1_s,
-					      _airspeed_eas, _param_fw_airspd_min.get());
+			_takeoff_underspeed = launchdetection::underspeedLatch(_takeoff_underspeed, _airspeed_valid, _airspeed_eas,
+					      _param_fw_airspd_min.get());
 			_ctrl_configuration_handler.setDisableUnderspeedProtection(!_takeoff_underspeed);
 
 			if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_FLYING
@@ -1464,14 +1463,16 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 		_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-		_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
-					  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
+		_takeoff_floor_released = launchdetection::floorRelease(_takeoff_floor_released
+					  || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
+					      && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get()),
+					  _takeoff_underspeed, _airspeed_valid, _airspeed_eas, _param_fw_airspd_min.get());
 		_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
 							_takeoff_pitch_min.get()));
 		_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 		_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
-		_takeoff_underspeed = launchdetection::underspeedLatch(_takeoff_underspeed, hrt_elapsed_time(&_time_airspeed_eas) < 1_s,
-				      _airspeed_eas, _param_fw_airspd_min.get());
+		_takeoff_underspeed = launchdetection::underspeedLatch(_takeoff_underspeed, _airspeed_valid, _airspeed_eas,
+				      _param_fw_airspd_min.get());
 		_ctrl_configuration_handler.setDisableUnderspeedProtection(!_takeoff_underspeed);
 
 		if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_FLYING
@@ -2375,7 +2376,7 @@ FixedWingModeManager::Run()
 
 		_launch_aborted = launchdetection::abortLatch(_launch_aborted, _control_mode.flag_armed, _launchDetector.aborted(),
 				  _control_mode.flag_control_manual_enabled && !_control_mode.flag_control_altitude_enabled, _landed,
-				  hrt_elapsed_time(&_time_airspeed_eas) < 1_s, _airspeed_eas, _param_fw_airspd_min.get());
+				  _airspeed_valid, _airspeed_eas, _param_fw_airspd_min.get());
 
 		const bool auto_mode = _control_mode.flag_control_auto_enabled;
 
@@ -2398,7 +2399,8 @@ FixedWingModeManager::Run()
 			const float level_height = ThrustLoss::levelHeight(_param_fw_tl_lvl_alt.get(), dist_sp,
 						   circular || sp.type == position_setpoint_s::SETPOINT_TYPE_LOITER, radius,
 						   ThrustLoss::glideOverGround(_param_fw_tl_glide.get(), (ground_speed - _wind_vel).norm(),
-								   _wind_vel(0) * cosf(bearing_sp) + _wind_vel(1) * sinf(bearing_sp)));
+								   _wind_vel(0) * cosf(bearing_sp) + _wind_vel(1) * sinf(bearing_sp),
+								   _wind_vel(1) * cosf(bearing_sp) - _wind_vel(0) * sinf(bearing_sp)));
 
 			if (auto_mode && height < level_height && _control_mode_current != FW_POSCTRL_MODE_AUTO_LANDING_STRAIGHT) {
 				_ctrl_configuration_handler.setLateralAccelMax(0.f);
@@ -2621,13 +2623,15 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 			   && !(nav == TerrainFollower::NAV_MISSION && _mission_land_start >= 0 && _mission_seq >= _mission_land_start);
 	in.guard = en & 4;
 	in.in_return = nav == TerrainFollower::NAV_RETURN;
+	in.in_hold = nav == TerrainFollower::NAV_HOLD;
 	in.no_setpoint = airborne && nav != TerrainFollower::NAV_OTHER
 			 && (!_position_setpoint_current_valid || _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_IDLE);
 	in.alt_amsl = _current_altitude;
 	in.vz_up = -_local_pos.vz;
 	in.nav_alt = nav_alt;
 	_home_position_sub.update(&_home);
-	in.ceiling = (_param_gf_max_ver_dist.get() > 0.f && _home.valid_alt) ? _home.alt + _param_gf_max_ver_dist.get() : INFINITY;
+	in.ceiling = _home.valid_alt ? _home.alt + (_param_gf_max_ver_dist.get() > 0.f ? _param_gf_max_ver_dist.get() :
+			TerrainFollower::kCeilingNoFence) : INFINITY;
 	in.raw_valid = PX4_ISFINITE(hagl_raw);
 	in.hagl_raw = hagl_raw;
 	in.range_max = sel.range_max;
@@ -2639,9 +2643,11 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 					_param_fw_t_clmb_max.get(), _param_fw_tf_loss_up.get(), _param_fw_tf_ttg.get(), bank, _param_fw_tf_maxdn.get()};
 
 	if (_local_pos.z_reset_counter != _tf_z_reset_counter) {
-		_terrain_follower.heightReset(-_local_pos.delta_z);
+		_terrain_follower.heightReset(TerrainFollower::resetShift(_local_pos.delta_z, _local_pos.ref_alt, _tf_ref_alt));
 		_tf_z_reset_counter = _local_pos.z_reset_counter;
 	}
+
+	_tf_ref_alt = _local_pos.ref_alt;
 
 	const TerrainFollower::Output out = _terrain_follower.update(in, p);
 

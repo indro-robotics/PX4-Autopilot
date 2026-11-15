@@ -236,8 +236,9 @@ MissionBlock::is_mission_item_reached_or_completed()
 			 */
 
 			// check if within loiter radius around wp, if yes then set altitude sp to mission item
-			if (dist >= 0.0f && dist_xy <= (_navigator->get_acceptance_radius() + mission_item_loiter_radius_abs)
-			    && dist_z <= _navigator->get_altitude_acceptance_radius()) {
+			if (ThrustLoss::orbitRing(dist >= 0.0f
+						  && dist_xy <= (_navigator->get_acceptance_radius() + mission_item_loiter_radius_abs),
+						  dist_z <= _navigator->get_altitude_acceptance_radius(), _navigator->thrust_lost())) {
 
 				_waypoint_position_reached = true;
 			}
@@ -275,6 +276,7 @@ MissionBlock::is_mission_item_reached_or_completed()
 				if (_navigator->thrust_lost()) {
 					const position_setpoint_s &land = _navigator->get_position_setpoint_triplet()->next;
 					const vehicle_global_position_s &gpos = *_navigator->get_global_position();
+					const vehicle_local_position_s &lpos = *_navigator->get_local_position();
 					const float course = ThrustLoss::finalCourse(get_bearing_to_next_waypoint(_mission_item.lat, _mission_item.lon,
 							     land.lat, land.lon), mission_item_loiter_radius_abs,
 							     get_distance_to_next_waypoint(_mission_item.lat, _mission_item.lon, land.lat, land.lon),
@@ -282,7 +284,9 @@ MissionBlock::is_mission_item_reached_or_completed()
 					_waypoint_position_reached = ThrustLoss::orbitEnds(land.valid
 								     && land.type == position_setpoint_s::SETPOINT_TYPE_LAND, gpos.alt - land.alt,
 								     get_distance_to_next_waypoint(gpos.lat, gpos.lon, land.lat, land.lon),
-								     _navigator->get_thrust_loss_glide(course));
+								     _navigator->get_thrust_loss_glide(course),
+								     get_bearing_to_next_waypoint(gpos.lat, gpos.lon, land.lat, land.lon) - atan2f(lpos.vy, lpos.vx),
+								     _navigator->get_thrust_loss_airspeed());
 				}
 			}
 
@@ -468,7 +472,7 @@ MissionBlock::is_mission_item_reached_or_completed()
 							 && next_sp.valid
 							 && curr_sp_new->type == position_setpoint_s::SETPOINT_TYPE_LOITER
 							 && (_mission_item.force_heading || _mission_item.nav_cmd == NAV_CMD_WAYPOINT)
-							 && !(_mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT && _navigator->thrust_lost());
+							 && !_navigator->thrust_lost();
 
 			// can only enforce exit course if next waypoint is not within loiter radius of current waypoint (with small margin)
 			const bool exit_course_is_reachable = dist_current_next > 1.05f * curr_sp_new->loiter_radius;

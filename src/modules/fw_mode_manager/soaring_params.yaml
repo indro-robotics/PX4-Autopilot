@@ -193,3 +193,12 @@ parameters:
       max: 100
       unit: m
       decimal: 0
+    SOAR_DRIFT:
+      description:
+        short: Thermal drift as a fraction of the estimated wind
+        long: The thermal estimate and the commanded thermalling centre move with the wind times this value.
+      type: float
+      default: 0.75
+      min: 0
+      max: 1.2
+      decimal: 2

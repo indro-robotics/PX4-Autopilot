@@ -79,3 +79,4 @@ px4_add_module(
 	)
 
 px4_add_unit_gtest(SRC FlareLawTest.cpp)
+px4_add_unit_gtest(SRC AirspeedValidityTest.cpp)

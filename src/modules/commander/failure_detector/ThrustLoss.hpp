@@ -87,10 +87,21 @@ public:
 
 	bool lost() const { return _lost; }
 
+	static constexpr float kAccelBank30 = 9.80665f * 0.57735f;
+
 	// an orbit left above the height its final needs lands long: the distance to the touchdown point over the glide ratio, plus 10 m
-	static bool orbitEnds(bool touchdown_next, float height, float distance, float glide)
+	static bool orbitEnds(bool touchdown_next, float height, float distance, float glide, float course_change,
+			      float airspeed)
 	{
+		distance += turnArc(course_change, airspeed);
 		return !touchdown_next || !(height > distance / (glide > 1.f ? glide : 1.f) + 10.f);
+	}
+
+	// the turn onto the final is flown at 30 deg of bank before the glide to the touchdown point, and its arc costs height like the rest of the path
+	static float turnArc(float course_change, float airspeed)
+	{
+		const float arc = acosf(cosf(course_change)) * airspeed * airspeed / kAccelBank30;
+		return __builtin_isfinite(arc) ? arc : 0.f;
 	}
 
 	// the glide arrives under the altitude an orbit item holds to its ring, so the altitude test would keep the item for good
@@ -99,10 +110,10 @@ public:
 		return on_ring && (at_altitude || flagged);
 	}
 
-	// wind along the course changes the ground covered per metre of height: ground speed over airspeed, held to 0.5 to 1.2
-	static float glideOverGround(float glide, float airspeed, float wind_along)
+	// wind changes the ground covered per metre of height: ground speed over airspeed, held to 0.5 to 1.2; a crosswind costs the crab
+	static float glideOverGround(float glide, float airspeed, float wind_along, float wind_cross)
 	{
-		const float scale = (airspeed + wind_along) / airspeed;
+		const float scale = (sqrtf(fmaxf(airspeed * airspeed - wind_cross * wind_cross, 0.f)) + wind_along) / airspeed;
 		return glide * (__builtin_isfinite(scale) ? fminf(fmaxf(scale, 0.5f), 1.2f) : 1.f);
 	}
 
@@ -133,9 +144,11 @@ public:
 	}
 
 	// a dead motor pays for bank with height: 30 deg raises the sink rate by a quarter, 50 deg nearly doubles it
-	static float lateralAccelMax(bool flagged, bool auto_mode, float accel_max)
+	// the wing strike rule limits the bank only just above FW_WING_HEIGHT, too low to level out of 30 deg at glide sink: 10 deg under 10 m of range
+	static float lateralAccelMax(bool flagged, bool auto_mode, float accel_max, bool range_valid, float range)
 	{
-		return (flagged && auto_mode) ? fminf(accel_max, 9.80665f * 0.57735f) : accel_max;
+		const float limit = (range_valid && range < 10.f) ? 9.80665f * 0.17633f : kAccelBank30;
+		return (flagged && auto_mode) ? fminf(accel_max, limit) : accel_max;
 	}
 
 	// a motor that runs again would fly the rest of the leg at the orbit height: NAN for no write, else the altitude of the orbit setpoint

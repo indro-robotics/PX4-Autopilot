@@ -137,12 +137,12 @@ inline Selection selectDownwardRange(const distance_sensor_s *samples, int n, ui
 	return sel;
 }
 
-// checks[i] follows samples[i] from one call to the next; a frozen sample turns stale, so the selection leaves it out
+// checks[i] follows samples[i] from one call to the next; a frozen sample reads quality 0: out of the mean, still fed as invalid
 inline void dropFrozen(distance_sensor_s *samples, int n, StuckCheck *checks, float alt)
 {
 	for (int i = 0; i < n; i++) {
 		if (!checks[i].live(samples[i].current_distance, alt, samples[i].timestamp)) {
-			samples[i].timestamp = 0;
+			samples[i].signal_quality = 0;
 		}
 	}
 }

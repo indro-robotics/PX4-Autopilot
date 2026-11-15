@@ -106,6 +106,8 @@ struct Params {
 	float gf_max_ver{0.f};		// [m] GF_MAX_VER_DIST, 0 off
 	float gf_max_hor{0.f};		// [m] GF_MAX_HOR_DIST, 0 off
 	float nav_loiter_rad{60.f};	// [m] NAV_LOITER_RAD, negative counter-clockwise
+	float drift{0.75f};		// SOAR_DRIFT, thermal drift over the wind
+	float clmb_max{3.f};		// [m/s] FW_T_CLMB_MAX
 };
 
 struct Input {

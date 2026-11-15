@@ -46,7 +46,6 @@ static constexpr float kRateMax = 5.f;
 static constexpr float kRangeUse = 0.75f;
 static constexpr float kUplift = 1.5f;
 static constexpr float kUpliftExit = 2.f;
-static constexpr float kFaultClimb = 40.f;
 static constexpr float kCosTiltMax = 0.766f;
 static constexpr uint64_t kReturnLossTime = 30000000;
 static constexpr double kSameCircle = 1e-7;
@@ -146,6 +145,13 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 	const float uplift = kUplift * p.floor;
 
+	if (!in.in_hold) {
+		_hold_alt = -INFINITY;
+	}
+
+	// a Hold keeps the height its pull-up reached, or the next lap pulls up over the same crest
+	const float nav_alt = (_hold_alt > in.nav_alt) ? _hold_alt : in.nav_alt;
+
 	if (in.landing) {
 		_released = false;
 
@@ -184,7 +190,7 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		if (_released && in.follow_wanted && !lost) {
 			_state = FOLLOW;
 
-		} else if (_released && in.guard && !in.follow_wanted && !lost && in.nav_alt < _terrain + uplift) {
+		} else if (_released && in.guard && !in.follow_wanted && !lost && nav_alt < _terrain + uplift) {
 			_state = UPLIFT;
 		}
 
@@ -193,9 +199,11 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 	case FOLLOW:
 	case UPLIFT: {
 			const bool done = (_state == FOLLOW) ? !in.follow_wanted
-					  : (in.follow_wanted || in.nav_alt > _terrain + uplift + kUpliftExit);
+					  : (in.follow_wanted || nav_alt > _terrain + uplift + kUpliftExit);
+			// a guard that lost the ground from above the band it holds flies the plan, not the loss climb
+			const bool above_band = _state == UPLIFT && _raw_prev > uplift + kUpliftExit;
 
-			if (done) {
+			if (done || (lost && above_band)) {
 				_state = STANDBY;
 
 			} else if (lost) {
@@ -211,7 +219,7 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		if (!lost) {
 			_state = in.follow_wanted ? FOLLOW : STANDBY;
 
-		} else if (in.in_return && in.now_us >= _t_lost + kReturnLossTime) {
+		} else if (in.in_return && in.now_us >= _t_lost + kReturnLossTime && _raw_prev >= p.floor) {
 			// the loss climb holds the Return above its approach altitude, so the landing would never start
 			_state = FAULT;
 		}
@@ -220,12 +228,6 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 	case PULL_UP: {
 			const bool under = used < p.floor;
-
-			// in Return the fence ceiling bounds the climb: FAULT there hands the altitude back under the ridge
-			if (under && !in.in_return && in.alt_amsl > _pullup_alt + kFaultClimb) {
-				_state = FAULT;
-				break;
-			}
 
 			if (!under || _t_under == 0) {
 				_t_under = under ? in.now_us : 0;
@@ -243,6 +245,10 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 				if (in.now_us >= _t_recover + kRecoverTime) {
 					_state = _resume;
+
+					if (in.in_hold) {
+						_hold_alt = math::max(_hold_alt, in.alt_amsl);
+					}
 				}
 
 			} else {
@@ -273,7 +279,6 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 		if (low || closing) {
 			_resume = _state;
-			_pullup_alt = in.alt_amsl;
 			_t_recover = 0;
 			_t_under = used < p.floor ? in.now_us : 0;
 			_t_low = 0;
@@ -290,12 +295,12 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 	out.cap_bank = ownsAltitude(_state);
 
 	if (_state == FOLLOW || _state == UPLIFT) {
-		const float target = (_state == FOLLOW) ? hagl_cmd : math::max(uplift, in.nav_alt - _terrain);
+		const float target = (_state == FOLLOW) ? hagl_cmd : math::max(uplift, nav_alt - _terrain);
 		float rate = terrain_rate + (target - used) / p.tc;
 
 		if (_state == FOLLOW) {
 			// a wrongly long range cannot take the aircraft further than FW_TF_MAXDN under the plan
-			const float limit = in.nav_alt - p.max_down;
+			const float limit = (_hold_alt > in.nav_alt - p.max_down) ? _hold_alt : in.nav_alt - p.max_down;
 			const float bound = (limit - in.alt_amsl) / p.tc;
 			const bool at_limit = in.alt_amsl <= limit + kLimitBand;
 
@@ -324,11 +329,21 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		if (in.raw_valid) {
 			out.altitude = math::max(out.altitude, in.alt_amsl - used + (in.follow_wanted ? hagl_cmd : uplift));
 		}
+
+	} else if (_state == STANDBY && nav_alt > in.nav_alt) {
+		out.altitude = nav_alt;
 	}
 
-	// the fence Return cannot act inside Return, so a noisy low reading would climb without bound
-	if (out.use_rate && in.in_return) {
-		out.height_rate = math::min(out.height_rate, (in.ceiling - in.alt_amsl) / p.tc);
+	// a noisy low reading would climb without bound; above the ceiling the bound holds the height, never descends
+	if (out.use_rate) {
+		const float bound = math::max((in.ceiling - in.alt_amsl) / p.tc, 0.f);
+
+		if (out.height_rate > bound && in.alt_amsl >= in.ceiling - kLimitBand && !in.in_return && !_return_sent) {
+			out.request_return = true;
+			_return_sent = true;
+		}
+
+		out.height_rate = math::min(out.height_rate, bound);
 	}
 
 	return out;

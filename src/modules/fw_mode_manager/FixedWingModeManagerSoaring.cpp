@@ -70,6 +70,7 @@ FixedWingModeManager::soar_params_update()
 		{px4::params::SOAR_Q2, &soaring::Params::q2},
 		{px4::params::SOAR_R, &soaring::Params::r},
 		{px4::params::SOAR_DIST_AHEAD, &soaring::Params::dist_ahead},
+		{px4::params::SOAR_DRIFT, &soaring::Params::drift},
 		{px4::params::GF_MAX_VER_DIST, &soaring::Params::gf_max_ver},
 		{px4::params::GF_MAX_HOR_DIST, &soaring::Params::gf_max_hor},
 	};
@@ -88,6 +89,7 @@ FixedWingModeManager::soar_params_update()
 	_soar_p.airspd_min = _param_fw_airspd_min.get();
 	_soar_p.airspd_trim = _param_fw_airspd_trim.get();
 	_soar_p.airspd_max = _param_fw_airspd_max.get();
+	_soar_p.clmb_max = _param_fw_t_clmb_max.get();
 	_soar_p.nav_loiter_rad = _param_nav_loiter_rad.get();
 }
 

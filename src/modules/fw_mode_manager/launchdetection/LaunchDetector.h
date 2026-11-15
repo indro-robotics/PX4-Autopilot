@@ -67,6 +67,12 @@ inline bool abortLatch(bool latched, bool armed, bool detector_aborted, bool pil
 	return armed && !flown_away && (latched || detector_aborted);
 }
 
+// a climb that passed the minimum airspeed and reads under it again has lost its thrust: the Takeoff floor would hold the nose up into the stall
+inline bool floorRelease(bool released, bool underspeed_latched, bool airspeed_valid, float airspeed, float airspeed_min)
+{
+	return released || (underspeed_latched && airspeed_valid && airspeed < airspeed_min);
+}
+
 // the rail exit is under the minimum airspeed; past it a motor cut in the climb must pitch for airspeed, not for the climb rate
 inline bool underspeedLatch(bool latched, bool airspeed_valid, float airspeed, float airspeed_min)
 {

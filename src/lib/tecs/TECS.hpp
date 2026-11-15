@@ -597,7 +597,8 @@ public:
 		_control.resetIntegrals();
 	}
 
-	void step_pitch_integrator(float step) { _control.stepPitchIntegrator(step); }
+	// a NaN step would hold the integrator at NaN for the rest of the flight
+	void step_pitch_integrator(float step) { if (PX4_ISFINITE(step)) { _control.stepPitchIntegrator(step); } }
 
 	void set_detect_underspeed_enabled(bool enabled) { _control_flag.detect_underspeed_enabled = enabled; };
 

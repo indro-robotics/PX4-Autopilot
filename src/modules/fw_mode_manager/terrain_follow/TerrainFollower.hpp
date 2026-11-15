@@ -44,12 +44,15 @@ public:
 	enum State : uint8_t { OFF, STANDBY, FOLLOW, UPLIFT, PULL_UP, RANGE_LOST, FAULT };
 	enum Nav : uint8_t { NAV_OTHER, NAV_HOLD, NAV_MISSION, NAV_RETURN };
 
-	struct Input  { uint64_t now_us, range_time_us; float dt; bool eligible, landing, follow_wanted, guard, in_return, no_setpoint;
-			float alt_amsl, vz_up, nav_alt, ceiling; bool raw_valid; float hagl_raw, range_max;
+	struct Input  { uint64_t now_us, range_time_us; float dt; bool eligible, landing, follow_wanted, guard, in_return, in_hold,
+			no_setpoint; float alt_amsl, vz_up, nav_alt, ceiling; bool raw_valid; float hagl_raw, range_max;
 			bool ekf_valid; float hagl_ekf; };
 	struct Params { float hagl, floor, tc, sink, climb_max, loss_up, ttg, bank, max_down; };
 	struct Output { uint8_t state; bool use_rate; float height_rate, altitude; bool min_airspeed,
 			cap_bank, request_return, descent_limited; float hagl_cmd, hagl_used, terrain_rate; };
+
+	// [m] above home: the climb bound without a fence ceiling
+	static constexpr float kCeilingNoFence = 120.f;
 
 	using StuckCheck = range_select::StuckCheck;
 
@@ -71,7 +74,13 @@ public:
 	{
 		_terrain += delta;
 		_loss_alt += delta;
-		_pullup_alt += delta;
+		_hold_alt += delta;
+	}
+
+	// a new origin altitude moves z and the origin together, so the altitude above sea level holds still
+	static float resetShift(float delta_z, float ref_alt, float ref_alt_prev)
+	{
+		return fabsf(ref_alt - ref_alt_prev) > 0.f ? 0.f : -delta_z;
 	}
 
 	bool latchFollow(bool bits_set, bool airborne);
@@ -121,5 +130,5 @@ private:
 	float _terrain_rate{0.f};
 	float _closure{0.f};
 	float _loss_alt{0.f};
-	float _pullup_alt{0.f};
+	float _hold_alt{-INFINITY};
 };

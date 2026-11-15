@@ -57,8 +57,8 @@
 
 #include "GeofenceBreachAvoidance/geofence_breach_avoidance.h"
 
-#if CONFIG_NAVIGATOR_ADSB
 #include <commander/failure_detector/ThrustLoss.hpp>
+#if CONFIG_NAVIGATOR_ADSB
 #include <lib/adsb/AdsbConflict.h>
 #endif // CONFIG_NAVIGATOR_ADSB
 #include <lib/perf/perf_counter.h>
@@ -302,8 +302,17 @@ public:
 		return (_wind_sub.copy(&wind) && hrt_elapsed_time(&wind.timestamp) < 10_s)
 		       ? ThrustLoss::glideOverGround(_param_fw_tl_glide,
 						     hypotf(_local_pos.vx - wind.windspeed_north, _local_pos.vy - wind.windspeed_east),
-						     wind.windspeed_north * cosf(course) + wind.windspeed_east * sinf(course))
+						     wind.windspeed_north * cosf(course) + wind.windspeed_east * sinf(course),
+						     wind.windspeed_east * cosf(course) - wind.windspeed_north * sinf(course))
 		       : _param_fw_tl_glide;
+	}
+
+	// airspeed of the turn after an orbit [m/s]: the ground velocity less a wind estimate of the last 10 s
+	float get_thrust_loss_airspeed()
+	{
+		wind_s wind{};
+		const bool fresh = _wind_sub.copy(&wind) && hrt_elapsed_time(&wind.timestamp) < 10_s;
+		return hypotf(_local_pos.vx - (fresh ? wind.windspeed_north : 0.f), _local_pos.vy - (fresh ? wind.windspeed_east : 0.f));
 	}
 
 	bool force_vtol();

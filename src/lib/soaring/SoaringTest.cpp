@@ -622,15 +622,22 @@ TEST(SoaringCut, FromLevelHoldStepsByTheGlideAngle)
 
 TEST(SoaringCut, NeverStepsTheNoseUpNorPast29Deg)
 {
-	// a Hold sinking 4.6 m/s is steeper than the glide: the path change is 13 deg nose up, and a cut must not raise the nose
+	// a CLIMB that sinks 3.5 m/s at the cut: the path change is nose up, and a cut must not raise the nose
 	Rig sinking;
-	sinking.w = -3.f;
-	sinking.toGlide();
+	sinking.in.height = 100.f;
+	sinking.step(2.1f);
+	ASSERT_EQ(sinking.out.state, State::CLIMB);
+	sinking.w = -6.5f;
+	sinking.step(5.f);
+	sinking.in.height = 260.f;
+	sinking.step(kDt);
+	ASSERT_EQ(sinking.out.state, State::GLIDE);
 	EXPECT_EQ(sinking.out.cut_count, 1);
 	EXPECT_FLOAT_EQ(sinking.out.cut_pitch_step, 0.f);
 
-	// 12 m/s up at 14 m/s reads 49 deg of climb, more than any motor climb: the step stops at 0.5 rad
+	// 12 m/s up at 14 m/s reads 49 deg of climb: with FW_T_CLMB_MAX at 12 the step stops at 0.5 rad
 	Rig spike;
+	spike.p.clmb_max = 12.f;
 	spike.climb_powered = 12.f;
 	spike.in.height = 100.f;
 	spike.step(2.1f);
@@ -642,6 +649,37 @@ TEST(SoaringCut, NeverStepsTheNoseUpNorPast29Deg)
 
 	ASSERT_EQ(spike.out.state, State::GLIDE);
 	EXPECT_FLOAT_EQ(spike.out.cut_pitch_step, -0.5f);
+}
+
+TEST(SoaringCut, LiftInTheClimbIsNoMotorClimb)
+{
+	// 12 m/s up at 14 m/s, 9 of it lift: the integrator holds the 3 m/s of FW_T_CLMB_MAX, 12.3 deg, and the 5.8 deg glide
+	Rig spike;
+	spike.climb_powered = 12.f;
+	spike.in.height = 100.f;
+	spike.step(2.1f);
+	ASSERT_EQ(spike.out.state, State::CLIMB);
+
+	while (spike.out.state == State::CLIMB && spike.t < 120.f) {
+		spike.step(kDt);
+	}
+
+	ASSERT_EQ(spike.out.state, State::GLIDE);
+	EXPECT_NEAR(spike.out.cut_pitch_step, -(3.f / 14.f + 1.41f / 14.f), 0.003f);
+}
+
+TEST(SoaringCut, FromAClimbingHoldStepsByTheGlideAngle)
+{
+	// a Hold climbing 2.1 m/s in lift holds its powered level attitude: the cut needs the 5.8 deg glide angle alone
+	Rig rig;
+	rig.p.enabled = false;
+	rig.w = 4.f;
+	rig.step(5.f);
+	rig.p.enabled = true;
+	rig.in.height = 200.f;
+	rig.toGlide();
+	EXPECT_EQ(rig.out.cut_count, 1);
+	EXPECT_NEAR(rig.out.cut_pitch_step, -1.41f / 14.f, 0.003f);
 }
 
 TEST(SoaringCut, LeavingAThermalIsNoCut)
@@ -660,6 +698,28 @@ TEST(SoaringCut, LeavingAThermalIsNoCut)
 	ASSERT_EQ(rig.out.state, State::GLIDE);
 	EXPECT_EQ(rig.out.cut_count, 1);
 	EXPECT_FLOAT_EQ(rig.out.cut_pitch_step, step);
+}
+
+TEST(SoaringStates, CommandedCentreMovesWithTheThermal)
+{
+	// SOAR_DRIFT 0 in 6 m/s of wind, the estimator held to its prediction by a variometer noise of 1 km/s
+	Rig rig;
+	rig.p.drift = 0.f;
+	rig.in.wind_e = 6.f;
+	rig.toThermal();
+	rig.p.r = 1000.f;
+	rig.step(5.f);
+	ASSERT_EQ(rig.out.state, State::THERMAL);
+	float worst = 0.f;
+
+	// a centre moved by the full wind would leave the estimate at 6 less the 5 m/s it closes
+	for (int i = 0; i < 1000; i++) {
+		rig.step(kDt);
+		worst = fmaxf(worst, hypotf(rig.out.centre_x - rig.out.thermal_x, rig.out.centre_y - rig.out.thermal_y));
+	}
+
+	ASSERT_EQ(rig.out.state, State::THERMAL);
+	EXPECT_LE(worst, 1.f);
 }
 
 TEST(SoaringStates, RadiusExitWhenCircleLeavesFence)
@@ -1435,6 +1495,8 @@ TEST(SoaringTurnCheck, STurnsGiveNoVerdict)
 struct Flight {
 	float wind_e{0.f};
 	float thermal_drift_e{0.f};	// thermal centre speed east beyond the wind
+	float drift{0.75f};		// SOAR_DRIFT
+	bool upwind{false};
 	float seconds{150.f};
 	unsigned seed{1};
 
@@ -1458,13 +1520,14 @@ struct Flight {
 
 		rig.p.max_rad = 5000.f;
 		rig.p.gf_max_hor = 0.f;
+		rig.p.drift = drift;
 		rig.in.wind_n = wind_n;
 		rig.in.wind_e = wind_e;
 		rig.in.height = 220.f;
-		// straight east in GLIDE, crossing the thermal about 34 s in
+		// straight east in GLIDE, crossing the thermal about 34 s in, or west from the east side
 		rig.in.x = 0.f;
-		rig.in.y = -480.f;
-		rig.psi = 90.f * kDeg;
+		rig.in.y = upwind ? 480.f : -480.f;
+		rig.psi = (upwind ? -90.f : 90.f) * kDeg;
 		rig.rate = 0.f;
 		rig.step(0.02f);
 
@@ -1493,7 +1556,12 @@ struct Flight {
 				const float e = std::max(-1.5f, std::min(1.5f, (d - rig.out.loiter_radius) / 20.f));
 				const float dx = tx - e * rx / d;
 				const float dy = ty - e * ry / d;
-				float err = atan2f(dy, dx) - rig.psi;
+				// the loiter guidance holds the ground path: the heading crabs into the wind along it
+				const float un = dx / hypotf(dx, dy);
+				const float ue = dy / hypotf(dx, dy);
+				const float uw = un * wind_n + ue * wind_e;
+				const float gs = uw + sqrtf(std::max(uw * uw - wind_n * wind_n - wind_e * wind_e + rig.speed * rig.speed, 0.f));
+				float err = atan2f(gs * ue - wind_e, gs * un - wind_n) - rig.psi;
 				err = atan2f(sinf(err), cosf(err));
 				const float max_rate = kG * tanf(45.f * kDeg) / rig.speed;
 				rig.rate = std::max(-max_rate, std::min(max_rate, dir * rig.speed / rig.out.loiter_radius + 0.8f * err));
@@ -1587,11 +1655,30 @@ TEST(SoaringClosedLoop, CentresThermalDriftingWithWind)
 {
 	Flight f;
 	f.wind_e = 5.f;
+	f.drift = 1.f;
 	f.fly();
 	ASSERT_GE(f.entry_t, 0.f);
 	ASSERT_GE(f.centre_err.size(), 1000u);
 	EXPECT_LE(f.medianError(), 30.f);
 	EXPECT_GE(f.climb / f.avail, 0.6f);
+}
+
+TEST(SoaringClosedLoop, CentresThermalDriftingWithAFractionOfTheWind)
+{
+	// 6 m/s wind, the field thermal at 0.5, 0.75 and 1.0 of it, SOAR_DRIFT the same: the flight bounds of the 6 m/s rows
+	// into the wind: downwind at 20 m/s over the ground the rig's entry falls 80 m past the centre
+	for (float k : {0.5f, 0.75f, 1.f}) {
+		Flight f;
+		f.wind_e = 6.f;
+		f.thermal_drift_e = (k - 1.f) * 6.f;
+		f.drift = k;
+		f.upwind = true;
+		f.fly();
+		ASSERT_GE(f.entry_t, 0.f) << k;
+		ASSERT_GE(f.centre_err.size(), 1000u) << k;
+		EXPECT_LE(f.medianError(), 30.f) << k;
+		EXPECT_GE(f.climb / f.avail, 0.6f) << k;
+	}
 }
 
 TEST(SoaringClosedLoop, NoEntryInTurbulenceWithoutThermal)
@@ -1640,4 +1727,42 @@ TEST(SoaringCanary, WrongPolarIsCaught)
 {
 	Params p;
 	EXPECT_NONFATAL_FAILURE(EXPECT_NEAR(Soaring::sink(p, 14.f, 1.f, 0.f), 1.41f + 0.1f, 0.03), "");
+}
+
+// a sample gap acts through its first sample: a reason in that sample that does not latch must not take its place
+static Output gapThen(State state, uint8_t first_reason, float after_s)
+{
+	Rig rig;
+	toState(rig, state);
+	rig.t += 120.f;
+	rig.in.allowed = false;
+	rig.in.inhibit_reason = first_reason;
+	rig.step(kDt);
+	rig.in.allowed = true;
+	rig.in.inhibit_reason = REASON_NONE;
+	rig.w = 0.f;
+	rig.in.height = 200.f;
+	rig.step(after_s);
+	return rig.out;
+}
+
+TEST(SoaringLatch, GapWithHomeInvalidInItsFirstSampleLatches)
+{
+	const Output o = gapThen(State::THERMAL, REASON_HOME, 5.f);
+	EXPECT_EQ(o.state, State::INHIBIT);
+	EXPECT_EQ(o.reason, REASON_MODE);
+}
+
+TEST(SoaringLatch, GapWithAirspeedStaleInItsFirstSampleLatches)
+{
+	const Output o = gapThen(State::GLIDE, REASON_AIRSPEED, 60.f);
+	EXPECT_EQ(o.state, State::INHIBIT);
+	EXPECT_EQ(o.reason, REASON_MODE);
+}
+
+TEST(SoaringLatch, GapWithModeInItsFirstSampleLatches)
+{
+	const Output o = gapThen(State::THERMAL, REASON_NONE, 60.f);
+	EXPECT_EQ(o.state, State::INHIBIT);
+	EXPECT_EQ(o.reason, REASON_MODE);
 }

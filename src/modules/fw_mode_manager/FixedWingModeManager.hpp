@@ -45,6 +45,7 @@
 #include "runway_takeoff/RunwayTakeoff.h"
 #include "terrain_follow/TerrainFollower.hpp"
 #include "ControllerConfigurationHandler.hpp"
+#include "airspeed_validity.hpp"
 
 #include <float.h>
 #include <commander/failure_detector/ThrustLoss.hpp>
@@ -325,7 +326,7 @@ private:
 	// set by an aborted launch, cleared only by a disarm: the motor stays at idle in every mode
 	bool _launch_aborted{false};
 
-	// set once above FW_TKO_PMIN_ALT, so a motor that stops later is not pitched up again on the way down
+	// set once above FW_TKO_PMIN_ALT or by an airspeed back under the minimum, so a stopped motor is not pitched up on the way down
 	bool _takeoff_floor_released{false};
 	bool _takeoff_underspeed{false};
 
@@ -407,7 +408,6 @@ private:
 
 	// [us] last time airspeed was received. used to detect timeouts.
 	hrt_abstime _time_airspeed_last_valid{0};
-	hrt_abstime _time_airspeed_eas{0};
 
 	// WIND
 
@@ -460,6 +460,7 @@ private:
 	bool _tf_limited{false};
 	uint8_t _tf_state{TerrainFollower::OFF};
 	uint8_t _tf_z_reset_counter{0};
+	float _tf_ref_alt{NAN};
 	uint16_t _tf_loss_count{0};
 	hrt_abstime _tf_status_time{0};
 	hrt_abstime _tf_wait_due{0};

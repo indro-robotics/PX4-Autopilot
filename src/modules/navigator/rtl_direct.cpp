@@ -284,6 +284,8 @@ void RtlDirect::set_rtl_item()
 			pos_sp_triplet->next.valid = true;
 			pos_sp_triplet->next.lat = _destination.lat;
 			pos_sp_triplet->next.lon = _destination.lon;
+			// the orbit end after a thrust loss measures the height over this altitude
+			pos_sp_triplet->next.alt = _destination.alt;
 			pos_sp_triplet->next.type = position_setpoint_s::SETPOINT_TYPE_LAND;
 
 			if (_force_heading) {

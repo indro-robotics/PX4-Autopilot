@@ -406,6 +406,23 @@ TEST(RangeSelectTest, FrozenSampleLeavesTheFeed)
 	}
 }
 
+TEST(RangeSelectTest, FrozenLoneSensorFeedsQualityZero)
+{
+	// one lidar frozen at 30 m: from the 10th repeat EKF2 still receives each sample, marked invalid, at its own time
+	range_select::StuckCheck checks[1] {};
+	float floor_state = 0.f;
+
+	for (int k = 0; k < 20; k++) {
+		const uint64_t t = NOW + k * 20'000;
+		distance_sensor_s s[1] {sample(30.f, 50.f, t)};
+		range_select::dropFrozen(s, 1, checks, 100.f - 0.02f * k);
+		const Fed fed = fedBySelection(s, 1, t - 100'000, floor_state);
+		ASSERT_TRUE(fed.sent) << k;
+		EXPECT_EQ(fed.time_us, t) << k;
+		EXPECT_EQ(fed.quality, k < 9 ? 100 : 0) << k;
+	}
+}
+
 TEST(RangeSelectTest, RadarNodeAtTheDefaultsKeepsTheStockFeed)
 {
 	// UAVCAN_RNG_MIN 0, UAVCAN_RNG_MAX 999, UAVCAN_RDR_MIN and UAVCAN_RDR_MAX -1: a lidar node and a radar node, both good

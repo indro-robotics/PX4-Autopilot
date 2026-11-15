@@ -292,7 +292,8 @@ void FwLateralLongitudinalControl::Run()
 
 			lateral_accel_sp = getCorrectedLateralAccelSetpoint(lateral_accel_sp);
 			const float lateral_accel_max = ThrustLoss::lateralAccelMax(thrustLost(),
-							_control_mode_sub.get().flag_control_auto_enabled, _lateral_configuration.lateral_accel_max);
+							_control_mode_sub.get().flag_control_auto_enabled, _lateral_configuration.lateral_accel_max,
+							_local_pos.dist_bottom_valid, _local_pos.dist_bottom);
 			lateral_accel_sp = math::constrain(lateral_accel_sp, -lateral_accel_max, lateral_accel_max);
 			roll_sp = mapLateralAccelerationToRollAngle(lateral_accel_sp);
 
