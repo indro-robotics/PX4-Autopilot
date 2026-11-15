@@ -832,6 +832,22 @@ void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg, ui
 	report.max_distance = static_cast<float>(msg.range_max());
 	// A radar altimeter reports its nearest return across the beam.
 	report.current_distance = static_cast<float>(*std::min_element(msg.ranges().begin(), msg.ranges().end()));
+
+	if (index == 0) {
+		// Read per sample, not from the 1 Hz parameter cache, so a fault set in flight starts on the next sample.
+		int32_t fault = 0;
+		param_get(_param_sim_gz_rng_flt, &fault);
+
+		if (fault == 1 && !std::isnan(_range_last)) {
+			report.current_distance = _range_last;
+
+		} else if (fault == 2) {
+			report.current_distance += 15.f;
+		}
+
+		_range_last = report.current_distance;
+	}
+
 	report.variance = 0.0f;
 	report.signal_quality = -1;
 	report.type = range_sensors[index].type;

@@ -176,6 +176,9 @@ private:
 
 	float _temperature{288.15};  // 15 degrees
 
+	param_t _param_sim_gz_rng_flt{param_find("SIM_GZ_RNG_FLT")};
+	float _range_last{NAN};
+
 	bool _realtime_clock_set{false};
 	gz::transport::Node _node;
 
