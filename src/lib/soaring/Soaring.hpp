@@ -38,6 +38,7 @@
 
 #pragma once
 
+#include <math.h>
 #include <stdint.h>
 
 namespace soaring
@@ -63,14 +64,18 @@ enum Reason : uint8_t {
 	REASON_FLOOR,
 	REASON_WEAK_LIFT,
 	REASON_CEILING,
-	REASON_NEW_SETPOINT,
-	REASON_ESTIMATOR,
-	REASON_AIRSPEED_LOW
+	REASON_ESTIMATOR = 12,		// 11 stays unused so every logged reason keeps one meaning
+	REASON_AIRSPEED_LOW,
+	REASON_OPERATOR,
+	REASON_MOTOR,
+	REASON_WIND,
+	REASON_CONFIG
 };
 
 struct Params {
 	bool enabled{false};
 	float alt_min{100.f};		// [m] above home
+	float alt_pat{80.f};		// [m] height to arrive home with after the glide back
 	float alt_cut{250.f};		// [m] above home
 	float alt_max{400.f};		// [m] above home
 	float max_rad{350.f};		// [m]
@@ -79,14 +84,14 @@ struct Params {
 	float thml_aspd{0.f};		// [m/s] CAS, 0 uses airspd_min / sqrt(cos bank)
 	float crse_aspd{0.f};		// [m/s] CAS, 0 uses airspd_min
 	float crse_rad{150.f};		// [m]
-	float min_thml_s{30.f};
-	float min_crse_s{30.f};
+	float min_thml_s{30.f};		// [s]
+	float min_crse_s{30.f};		// [s]
 	float vario_tc{2.f};		// [s]
 	float cd0{0.0297f};
 	float b{0.0702f};
 	float k{80.2f};			// [m2/s2]
-	float q1{0.02f};
-	float q2{3.f};
+	float q1{0.02f};		// [m/s per sqrt(s)]
+	float q2{3.f};			// [m per sqrt(s)]
 	float r{0.5f};			// [m/s]
 	float dist_ahead{15.f};		// [m]
 	float airspd_min{14.f};		// [m/s] FW_AIRSPD_MIN
@@ -98,7 +103,9 @@ struct Params {
 
 struct Input {
 	uint64_t time_us{0};
+	bool armed{false};
 	bool allowed{false};
+	bool operator_cmd{false};	// operator command seen since the last update
 	uint8_t inhibit_reason{REASON_MODE};
 	float x{0.f};			// [m] local north
 	float y{0.f};			// [m] local east
@@ -109,6 +116,8 @@ struct Input {
 	float cas{0.f};			// [m/s]
 	float tas{0.f};			// [m/s]
 	float roll{0.f};		// [rad]
+	float yaw{0.f};			// [rad]
+	float accel_x{0.f};		// [m/s2] kinematic acceleration along the body x axis
 	float wind_n{0.f};		// [m/s]
 	float wind_e{0.f};		// [m/s]
 	bool wind_valid{false};
@@ -131,6 +140,7 @@ struct Output {
 	float centre_y{0.f};		// [m] commanded THERMAL centre, local east
 
 	float vario_te{0.f};
+	float vario_te_imu{0.f};
 	float vario_netto{0.f};
 	float vario_netto_slow{0.f};
 	float sink_polar{0.f};
@@ -142,10 +152,13 @@ struct Output {
 	float thermal_y{0.f};		// [m] estimated centre, local east
 	float thermal_var[4] {};
 	float alt_min{0.f};
+	float alt_floor{0.f};		// [m] motor restart and lowest thermalling height
 	float alt_cut{0.f};
 	float alt_max{0.f};		// [m] effective ceiling
 	float dist_home{0.f};
 	float cas_min{0.f};		// [m/s] airspeed-low threshold
+	float aspd_excess{NAN};		// [m/s] pitot TAS less the GPS estimate over the last full turn
+	float aspd_turn{NAN};		// [m/s] GPS estimate of TAS over the last full turn
 	uint16_t thermal_count{0};
 	float height_gained{0.f};	// [m] sum over thermals
 	float last_gain{0.f};		// [m] last thermal
@@ -168,6 +181,7 @@ private:
 	void setState(State state, uint8_t reason, float height);
 	void enterThermal(const Input &in, const Params &p, float climb_expected);
 	void thermalStep(const Input &in, const Params &p, float dt, float netto, float te, float radius);
+	bool turnCheck(const Input &in, float tas, float roll);
 
 	State _state{State::OFF};
 	uint8_t _reason{REASON_NONE};
@@ -176,10 +190,14 @@ private:
 	float _good_s{0.f};
 	float _aspd_low_s{0.f};
 	float _glide_bar_s{0.f};
+	float _restart_low_s{0.f};
+	uint8_t _latch{REASON_NONE};
+	bool _speed_hold{false};
 
 	float _climb_f{0.f};
 	float _tas_prev{0.f};
 	float _tas_dot{0.f};
+	float _accel_f{0.f};
 	float _netto_slow{0.f};
 	float _climb_avg{0.f};
 
@@ -190,9 +208,14 @@ private:
 	float _cx{0.f};
 	float _cy{0.f};
 	bool _ccw{false};
-	float _hold_x0{0.f};
-	float _hold_y0{0.f};
 	float _entry_height{0.f};
+
+	float _yaw_prev{NAN};
+	float _turn_net{0.f};		// [rad] signed heading change
+	float _turn_sum[5] {};		// weight, weighted TAS, v north, v east, v.v
+	float _aspd_excess{NAN};
+	float _aspd_turn{NAN};
+	bool _turn_ok{false};
 
 	uint16_t _thermal_count{0};
 	float _height_gained{0.f};

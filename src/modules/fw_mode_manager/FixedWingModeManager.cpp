@@ -132,6 +132,14 @@ FixedWingModeManager::vehicle_command_poll()
 	vehicle_command_s vehicle_command;
 
 	while (_vehicle_command_sub.update(&vehicle_command)) {
+#ifdef CONFIG_FW_SOARING
+		_soar_operator_cmd |= vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_MODE
+				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_REPOSITION
+				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_ALTITUDE
+				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_ORBIT
+				      || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_SPEED;
+#endif // CONFIG_FW_SOARING
+
 		if (vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_GO_AROUND) {
 			// only abort landing before point of no return (horizontal and vertical)
 			if (_control_mode.flag_control_auto_enabled &&

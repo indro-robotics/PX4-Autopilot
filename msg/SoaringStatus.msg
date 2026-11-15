@@ -21,13 +21,17 @@ uint8 REASON_RADIUS = 7
 uint8 REASON_FLOOR = 8
 uint8 REASON_WEAK_LIFT = 9
 uint8 REASON_CEILING = 10
-uint8 REASON_NEW_SETPOINT = 11
 uint8 REASON_ESTIMATOR = 12
 uint8 REASON_AIRSPEED_LOW = 13
+uint8 REASON_OPERATOR = 14 # an end by OPERATOR, MODE, FAILSAFE, MOTOR or the turn check holds until SOAR_EN 0 then 1 or disarm
+uint8 REASON_MOTOR = 15
+uint8 REASON_WIND = 16
+uint8 REASON_CONFIG = 17
 
 uint8 reason # inhibit reason in INHIBIT, else the reason of the last transition
 
 float32 vario_te # [m/s] total-energy climb rate
+float32 vario_te_imu # [m/s] total-energy climb rate with the kinetic term from the body-x acceleration
 float32 vario_netto # [m/s] air-mass vertical speed
 float32 vario_netto_slow # [m/s] netto filtered by SOAR_VARIO_TC
 float32 sink_polar # [m/s] polar sink at the present airspeed and bank
@@ -41,8 +45,10 @@ float32[4] thermal_var # estimator variances of strength, radius, north, east
 float32 loiter_radius # [m] commanded orbit radius
 float32 alt_rel # [m] height above home
 float32 alt_min # [m] SOAR_ALT_MIN
+float32 alt_floor # [m] motor restart height: SOAR_ALT_MIN or the glide reach home, the higher
 float32 alt_cut # [m] SOAR_ALT_CUT
 float32 alt_max # [m] effective ceiling
 float32 dist_home # [m] horizontal distance from home
+float32 aspd_excess # [m/s] pitot TAS less the GPS estimate over the last full turn
 uint16 thermal_count # thermals entered
 float32 height_gained # [m] height gained over all thermals

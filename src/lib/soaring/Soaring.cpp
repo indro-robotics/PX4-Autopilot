@@ -41,7 +41,13 @@ namespace soaring
 
 static constexpr float kG = 9.80665f;
 static constexpr float kDeg = 0.01745329f;
+static constexpr float kPi = 3.14159265f;
 static constexpr float kTwoPi = 6.2831853f;
+static constexpr float kAspdExcess = 2.5f;	// [m/s] pitot TAS above the GPS turn estimate that ends soaring
+// the restart check mirrors the FD_FW_TL_THR, FD_FW_TL_RATE and FD_FW_TL_TIME defaults: 2 s to throttle 0.7, -0.8 m/s, 2 s
+static constexpr float kRestartGraceS = 2.f;
+static constexpr float kRestartRate = -0.8f;
+static constexpr float kRestartS = 2.f;
 
 static float clampf(float v, float lo, float hi)
 {
@@ -97,6 +103,11 @@ void Soaring::setState(State state, uint8_t reason, float height)
 			_height_gained += _last_gain;
 		}
 
+		// a motor climb leaves its energy in the entry filter
+		if (state == State::GLIDE && _state != State::THERMAL) {
+			_netto_slow = 0.f;
+		}
+
 		_state = state;
 		_state_s = 0.f;
 	}
@@ -132,8 +143,6 @@ void Soaring::enterThermal(const Input &in, const Params &p, float climb_expecte
 	_cy = in.y + _s[3];
 	_ccw = fabsf(in.roll) > 5.f * kDeg ? in.roll < 0.f : p.nav_loiter_rad < 0.f;
 	_climb_avg = climb_expected;
-	_hold_x0 = in.hold_x;
-	_hold_y0 = in.hold_y;
 	_entry_height = in.height;
 	_thermal_count++;
 	setState(State::THERMAL, REASON_NONE, in.height);
@@ -209,6 +218,52 @@ void Soaring::thermalStep(const Input &in, const Params &p, float dt, float nett
 	_climb_avg = lpf(_climb_avg, te, dt, kTwoPi * radius / fmaxf(in.tas, 5.f));
 }
 
+bool Soaring::turnCheck(const Input &in, float tas, float roll)
+{
+	bool evaluated = false;
+
+	// over a full turn of the air velocity the spread of the ground velocity about its mean is the TAS, whatever the wind
+	if (fabsf(_turn_net) >= kTwoPi) {
+		const float mn = _turn_sum[2] / _turn_sum[0];
+		const float me = _turn_sum[3] / _turn_sum[0];
+		_aspd_turn = sqrtf(fmaxf(_turn_sum[4] / _turn_sum[0] - mn * mn - me * me, 0.f));
+		_aspd_excess = _turn_sum[1] / _turn_sum[0] - _aspd_turn;
+		_turn_ok = fabsf(_aspd_excess) <= kAspdExcess;
+		evaluated = true;
+	}
+
+	// heading from yaw, not g tan(roll) / TAS: an over-reading pitot would stretch the turn
+	float d = in.yaw - _yaw_prev;
+	d = d > kPi ? d - kTwoPi : (d < -kPi ? d + kTwoPi : d);
+	_yaw_prev = in.yaw;
+	const bool step = !std::isfinite(d) || fabsf(d) > 0.5f;
+
+	// a reversal restarts the turn since S-turns cover headings unevenly; a step is an estimator yaw reset
+	if (evaluated || !in.armed || step || (fabsf(roll) > 5.f * kDeg && d * _turn_net < 0.f)) {
+		_turn_net = 0.f;
+
+		for (int i = 0; i < 5; i++) {
+			_turn_sum[i] = 0.f;
+		}
+	}
+
+	if (step) {
+		d = 0.f;
+	}
+
+	// weight by heading change, not time: a ground-fixed orbit in wind spends longer upwind
+	const float w = fabsf(d);
+	const float vn = finite(in.vn);
+	const float ve = finite(in.ve);
+	_turn_net += d;
+	_turn_sum[0] += w;
+	_turn_sum[1] += w * tas;
+	_turn_sum[2] += w * vn;
+	_turn_sum[3] += w * ve;
+	_turn_sum[4] += w * (vn * vn + ve * ve);
+	return evaluated;
+}
+
 void Soaring::update(const Input &in, const Params &p, Output &out)
 {
 	const float dt = (_last_us > 0 && in.time_us > _last_us) ? fminf((in.time_us - _last_us) * 1e-6f, 0.1f) : 0.f;
@@ -216,12 +271,13 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 
 	const float cas = finite(in.cas);
 	const float tas = finite(in.tas);
-	const float roll = finite(in.roll);
+	const float roll = clampf(finite(in.roll), -60.f * kDeg, 60.f * kDeg);
 	const float ratio = (cas > 5.f && tas > 5.f) ? tas / cas : 1.f;
 
 	if (dt > 0.f) {
 		_climb_f = lpf(_climb_f, -finite(in.vz), dt, 0.5f);
 		_tas_dot = lpf(_tas_dot, (tas - _tas_prev) / dt, dt, 0.5f);
+		_accel_f = lpf(_accel_f, finite(in.accel_x), dt, 0.5f);
 	}
 
 	_tas_prev = tas;
@@ -244,24 +300,61 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 	const float hold_dist = norm(in.hold_x - in.home_x, in.hold_y - in.home_y);
 	const float cruise_rad = (p.crse_rad > 0.f && hold_dist + p.crse_rad <= r_soar) ? p.crse_rad : in.nav_radius;
 	const float cruise_cas = p.crse_aspd > 0.f ? p.crse_aspd : p.airspd_min;
-	const float cas_min = p.airspd_min * sqrtf(1.f / cosf(fminf(fabsf(roll), 60.f * kDeg))) - 2.f;
+	const float cas_min = p.airspd_min * sqrtf(1.f / cosf(roll)) - 2.f;
+
+	// glide reach home at FW_AIRSPD_MIN in the wind along the track home, with a 1.3 margin
+	const float wind_home = dist_home > 1.f ? (in.wind_n * (in.home_x - in.x) + in.wind_e * (in.home_y - in.y)) / dist_home : 0.f;
+	const float alt_floor = fmaxf(p.alt_min, p.alt_pat + 1.3f * dist_home * sink(p, p.airspd_min, ratio, 0.f)
+				  / fmaxf(p.airspd_min * ratio + wind_home, 1.f));
+
+	if (!in.armed || !p.enabled) {
+		_latch = REASON_NONE;
+	}
+
+	if (!in.armed) {
+		_turn_ok = false;
+	}
+
+	if (turnCheck(in, tas, roll) && p.enabled && _aspd_excess > kAspdExcess && _latch == REASON_NONE) {
+		_latch = REASON_AIRSPEED;
+	}
 
 	_state_s += dt;
 	_glide_bar_s = fmaxf(_glide_bar_s - dt, 0.f);
 	const bool unpowered = _state == State::GLIDE || _state == State::THERMAL;
 	_aspd_low_s = (unpowered && cas < cas_min) ? _aspd_low_s + dt : 0.f;
 	const bool aspd_low = _aspd_low_s >= 1.f;
+	const bool active = _state >= State::CLIMB;
+	_restart_low_s = (_state == State::CLIMB && _state_s >= kRestartGraceS && te < kRestartRate) ? _restart_low_s + dt : 0.f;
 
 	uint8_t inhibit = REASON_NONE;
 
-	if (!in.allowed) {
+	if (_latch != REASON_NONE) {
+		inhibit = _latch;
+
+	} else if (in.operator_cmd && active) {
+		inhibit = REASON_OPERATOR;
+
+	} else if (_restart_low_s >= kRestartS) {
+		// a restart that adds no energy ends soaring and leaves the motor failure to the stock failsafe
+		inhibit = REASON_MOTOR;
+
+	} else if (!in.allowed) {
 		inhibit = in.inhibit_reason != REASON_NONE ? in.inhibit_reason : (uint8_t)REASON_MODE;
+
+	} else if (!in.wind_valid) {
+		inhibit = REASON_WIND;
 
 	} else if (p.alt_cut < p.alt_min + 30.f || alt_max < p.alt_cut + 20.f) {
 		inhibit = REASON_BAND;
 
 	} else if (hold_dist + in.nav_radius > r_soar) {
 		inhibit = REASON_RADIUS;
+	}
+
+	if (p.enabled && active && (inhibit == REASON_OPERATOR || inhibit == REASON_MODE || inhibit == REASON_FAILSAFE
+				    || inhibit == REASON_MOTOR)) {
+		_latch = inhibit;
 	}
 
 	if (!p.enabled) {
@@ -279,21 +372,21 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 			setState(State::INHIBIT, REASON_NONE, in.height);
 			_good_s += dt;
 
-			if (_good_s >= 2.f) {
-				setState(in.height > p.alt_min ? State::GLIDE : State::CLIMB, REASON_NONE, in.height);
+			if (_good_s >= 2.f && _turn_ok) {
+				setState(in.height > alt_floor ? State::GLIDE : State::CLIMB, REASON_NONE, in.height);
 			}
 
 			break;
 
 		case State::CLIMB:
-			if (in.height >= p.alt_cut && _glide_bar_s <= 0.f) {
+			if (in.height >= p.alt_cut && alt_floor <= p.alt_cut - 30.f && _glide_bar_s <= 0.f) {
 				setState(State::GLIDE, REASON_NONE, in.height);
 			}
 
 			break;
 
 		case State::GLIDE:
-			if (in.height <= p.alt_min) {
+			if (in.height <= alt_floor) {
 				setState(State::CLIMB, REASON_FLOOR, in.height);
 
 			} else if (aspd_low) {
@@ -301,8 +394,8 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 				_glide_bar_s = 20.f;
 
 			} else if (climb_expected >= p.vspeed && _state_s >= p.min_crse_s
-				   && in.height >= p.alt_min + 20.f && in.height <= alt_max - 30.f
-				   && dist_home + 2.f * radius <= r_soar && in.wind_valid) {
+				   && in.height >= alt_floor + 20.f && in.height <= alt_max - 30.f
+				   && dist_home + 2.f * radius <= r_soar) {
 				enterThermal(in, p, climb_expected);
 			}
 
@@ -311,7 +404,7 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 		case State::THERMAL:
 			thermalStep(in, p, dt, netto, te, radius);
 
-			if (in.height <= p.alt_min) {
+			if (in.height <= alt_floor) {
 				setState(State::CLIMB, REASON_FLOOR, in.height);
 
 			} else if (aspd_low) {
@@ -327,9 +420,6 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 			} else if (norm(_cx - in.home_x, _cy - in.home_y) + radius > r_soar) {
 				setState(State::GLIDE, REASON_RADIUS, in.height);
 
-			} else if (norm(in.hold_x - _hold_x0, in.hold_y - _hold_y0) > 1.f) {
-				setState(State::GLIDE, REASON_NEW_SETPOINT, in.height);
-
 			} else if (_state_s >= p.min_thml_s && _climb_avg < p.vspeed) {
 				setState(State::GLIDE, REASON_WEAK_LIFT, in.height);
 			}
@@ -339,17 +429,20 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 	}
 
 	const bool thermal = _state == State::THERMAL;
+	// held down to the ceiling less 20 m so the zoom on slowing (23 to 14 m/s returns 17 m) stays under it
+	_speed_hold = in.height > alt_max || (_speed_hold && in.height >= alt_max - 20.f);
 
 	out.state = _state;
 	out.reason = _reason;
-	out.alt_sp = p.alt_cut + 5.f;
-	out.airspeed_sp = thermal ? vth : ((_state == State::GLIDE && in.height > alt_max) ? p.airspd_max : cruise_cas);
+	out.alt_sp = fmaxf(p.alt_cut + 5.f, in.height);
+	out.airspeed_sp = thermal ? vth : ((_state == State::GLIDE && _speed_hold) ? p.airspd_max : cruise_cas);
 	out.loiter_radius = thermal ? radius : cruise_rad;
 	out.loiter_ccw = _ccw;
 	out.centre_x = _cx;
 	out.centre_y = _cy;
 
 	out.vario_te = te;
+	out.vario_te_imu = _climb_f + tas * _accel_f / kG;
 	out.vario_netto = netto;
 	out.vario_netto_slow = _netto_slow;
 	out.sink_polar = sink_now;
@@ -365,10 +458,13 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 	}
 
 	out.alt_min = p.alt_min;
+	out.alt_floor = alt_floor;
 	out.alt_cut = p.alt_cut;
 	out.alt_max = alt_max;
 	out.dist_home = dist_home;
 	out.cas_min = cas_min;
+	out.aspd_excess = _aspd_excess;
+	out.aspd_turn = _aspd_turn;
 	out.thermal_count = _thermal_count;
 	out.height_gained = _height_gained;
 	out.last_gain = _last_gain;

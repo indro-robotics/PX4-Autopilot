@@ -432,6 +432,8 @@ private:
 	float _airspeed_tas{NAN};
 	hrt_abstime _time_soar_airspeed{0};
 	float _roll{0.f};
+	bool _soar_operator_cmd{false};
+	int32_t _soar_act_fail_act{0};
 	hrt_abstime _time_soar_status{0};
 	hrt_abstime _time_soar_debug{0};
 
