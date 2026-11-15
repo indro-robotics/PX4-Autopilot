@@ -52,6 +52,18 @@ PARAM_DEFINE_INT32(SIM_GZ_EN, 0);
 PARAM_DEFINE_INT32(SIM_GZ_EN_LIDAR, 1);
 
 /**
+ * Fault on the first downward range sensor in Gazebo bridge
+ *
+ * Takes effect on the next sample.
+ *
+ * @group Simulation
+ * @value 0 None
+ * @value 1 Repeats its last distance
+ * @value 2 Reads 15 m long
+ */
+PARAM_DEFINE_INT32(SIM_GZ_RNG_FLT, 0);
+
+/**
  * Enable optical flow sensor in Gazebo bridge
  *
  * @boolean
