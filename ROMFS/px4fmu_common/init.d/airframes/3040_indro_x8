@@ -80,8 +80,6 @@ param set-default FD_FW_TL_RATE -0.8
 
 # NAV
 # Takeoff holds at 45 m and Return at 30 m; the fence sits at 60 m.
-# A landing abort climbs this far above the height it starts from.
-param set-default MIS_LND_ABRT_ALT 10
 # Arming replaces a stored landing pattern that does not fit with one written from home on the compass heading: a heading bent by the launcher rail turns the pattern about home, so check the heading at the ground station against the rail before arming.
 param set-default MIS_LP_EN 1
 # Written touchdown 15 m ahead of home on the launch heading.
@@ -146,6 +144,8 @@ param set-default FW_LAUN_MOT_DEL 0.4
 param set-default FW_LAUN_SPD_MIN 2.5
 # Takeoff pitch flies FW_TKO_AIRSPD alone: a weak motor costs climb rate before airspeed.
 param set-default FW_TKO_SPDWT 2
+# Takeoff pitch floor at FW_LND_FL_PMIN above 5 m: a motor that stops in the climb pitches down for FW_TKO_AIRSPD.
+param set-default FW_TKO_PMIN_ALT 5
 # Pusher stopped on the launcher and commanded to zero in the flare.
 param set-default FW_THR_IDLE 0.0
 
@@ -162,6 +162,8 @@ param set-default FW_LND_FL_TIME 0.3
 # Stock flare trigger.
 param set-default FW_LND_FL_TTD 0
 param set-default FW_LND_FLALT 1.5
+# The approach holds the glide slope ahead of the airspeed, so the flare starts on the slope.
+param set-default FW_LND_SPDWT 0.5
 param set-default FW_LND_THRTC_SC 0.2
 # No headwind additive.
 param set-default FW_LND_WIND_SC 0

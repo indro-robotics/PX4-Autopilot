@@ -1710,6 +1710,7 @@ void Navigator::landingPatternWrite(float heading, bool ready, bool slope)
 		} else {
 			mavlink_log_critical(&_mavlink_log_pub,
 					     "Landing pattern refused - MIS_LP_ALT over MIS_LP_DIST more than 1 deg under FW_LND_ANG");
+			mavlink_log_critical(&_mavlink_log_pub, "FIX: raise MIS_LP_ALT or shorten MIS_LP_DIST");
 		}
 
 		landingPatternDisarm(*this);
