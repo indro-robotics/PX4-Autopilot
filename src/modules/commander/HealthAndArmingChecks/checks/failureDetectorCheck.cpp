@@ -145,7 +145,8 @@ void FailureDetectorChecks::checkAndReport(const Context &context, Report &repor
 		/* EVENT
 		 * @description
 		 * <profile name="dev">
-		 * This check can be configured via <param>FD_ACT_EN</param> parameter.
+		 * This check can be configured via <param>FD_ACT_EN</param> and, for the fixed-wing thrust loss check,
+		 * <param>FD_FW_TL_TIME</param> parameters.
 		 * </profile>
 		 */
 		reporter.healthFailure(NavModes::All, health_component_t::motors_escs, events::ID("check_failure_detector_motor"),

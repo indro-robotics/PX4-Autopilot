@@ -73,6 +73,7 @@ private:
 	bool checkNeedsToClimb();
 
 	bool _needs_climbing{false}; 	//< Flag if climbing is required at the start
+	bool _leg_lowered{false};
 	bool _enforce_rtl_alt{false};
 	float _rtl_alt{0.0f};	///< AMSL altitude at which the vehicle should return to the land position
 

@@ -41,6 +41,8 @@ param set-default SYS_HAS_NUM_DIST 1
 param set-default UAVCAN_ENABLE 2
 param set-default UAVCAN_RNG_MAX 50.0
 param set-default UAVCAN_RNG_MIN 0.08
+param set-default UAVCAN_RDR_MAX 100.0
+param set-default UAVCAN_RDR_MIN 0.5
 param set-default UAVCAN_SUB_DPRES 1
 param set-default UAVCAN_SUB_RNG 1
 
@@ -78,7 +80,7 @@ param set-default FD_FW_TL_RATE -0.8
 # Takeoff holds at 45 m and Return at 30 m; the fence sits at 60 m.
 # A landing abort climbs this far above the height it starts from.
 param set-default MIS_LND_ABRT_ALT 10
-# Arming replaces a stored landing pattern that does not fit with one written from home and the launch heading.
+# Arming replaces a stored landing pattern that does not fit with one written from home on the compass heading: a heading bent by the launcher rail turns the pattern about home, so check the heading at the ground station against the rail before arming.
 param set-default MIS_LP_EN 1
 # Written touchdown 15 m ahead of home on the launch heading.
 param set-default MIS_LP_AHEAD 15
@@ -121,7 +123,8 @@ param set-default FW_WING_HEIGHT 3.5
 # Climb rate held low until a full-throttle climb is measured.
 param set-default FW_T_CLMB_MAX 3.0
 param set-default FW_T_HRATE_FF 0.7
-param set-default FW_T_SPDWEIGHT 0.5
+# Pitch weighs airspeed and height alike: at 0.5 the launch flies at 8 to 9 deg angle of attack and the Hold 1.4 m low.
+param set-default FW_T_SPDWEIGHT 1.0
 param set-default FW_T_THR_LOW_HGT 30
 # Glide reach per metre of height: a setpoint farther away raises the wings-level height.
 param set-default FW_TL_GLIDE 8
@@ -135,7 +138,7 @@ param set-default WEIGHT_GROSS 3.78
 param set-default FW_LAUN_AC_T 0.1
 # Launch detected from 15 m/s/s: at 20 a shot of two band runs at 50 % loss goes undetected.
 param set-default FW_LAUN_AC_THLD 15
-# Takeoff course from the GNSS track over 20 m: the launcher rail bends the compass heading.
+# Takeoff course from the GNSS track over 20 m.
 param set-default FW_LAUN_CRS_DST 20
 param set-default FW_LAUN_DETCN_ON 1
 param set-default FW_LAUN_MOT_DEL 0.4
@@ -157,6 +160,8 @@ param set-default FW_LND_FL_TIME 0.3
 # Stock flare trigger.
 param set-default FW_LND_FL_TTD 0
 param set-default FW_LND_FLALT 1.5
+# The approach holds the glide slope ahead of the airspeed, so the flare starts on the slope.
+param set-default FW_LND_SPDWT 0.5
 param set-default FW_LND_THRTC_SC 0.2
 # No headwind additive.
 param set-default FW_LND_WIND_SC 0

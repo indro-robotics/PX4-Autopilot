@@ -979,6 +979,34 @@ TEST(SoaringLatch, ModeFailsafeAndMotorEndsLatch)
 	EXPECT_EQ(rig.out.state, State::GLIDE);
 }
 
+TEST(SoaringLatch, SampleGapEndsEveryActiveState)
+{
+	// an external mode runs no update: the first sample back in Hold 120 s later is a mode change
+	const State states[] = {State::CLIMB, State::GLIDE, State::THERMAL};
+
+	for (State state : states) {
+		Rig rig;
+		toState(rig, state);
+		rig.t += 120.f;
+		rig.step(kDt);
+		EXPECT_EQ(rig.out.state, State::INHIBIT) << (int)state;
+		EXPECT_EQ(rig.out.reason, REASON_MODE) << (int)state;
+		rig.step(5.f);
+		EXPECT_EQ(rig.out.state, State::INHIBIT) << (int)state;
+		EXPECT_EQ(rig.out.reason, REASON_MODE) << (int)state;
+	}
+}
+
+TEST(SoaringLatch, GapUnderOneSecondKeepsTheState)
+{
+	Rig rig;
+	toState(rig, State::THERMAL);
+	// 0.9 s missed plus one 0.02 s cycle
+	rig.t += 0.9f;
+	rig.step(kDt);
+	EXPECT_EQ(rig.out.state, State::THERMAL);
+}
+
 // One command in INHIBIT with the given reason, which clears 1 s later; returns the output 5 s after that.
 static Output afterCommandInInhibit(uint8_t reason, uint8_t kind, bool glide_first)
 {

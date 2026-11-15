@@ -48,8 +48,6 @@ static constexpr float kUplift = 1.5f;
 static constexpr float kUpliftExit = 2.f;
 static constexpr float kFaultClimb = 40.f;
 static constexpr float kCosTiltMax = 0.766f;
-static constexpr float kStuckAlt = 1.f;
-static constexpr uint8_t kStuckSamples = 10;
 static constexpr uint64_t kReturnLossTime = 30000000;
 static constexpr double kSameCircle = 1e-7;
 static constexpr float kJump = 0.2f;
@@ -60,25 +58,6 @@ static constexpr float kLimitBand = 1.f;
 float TerrainFollower::rawHagl(float range, float cos_tilt)
 {
 	return cos_tilt > kCosTiltMax ? range * cos_tilt : NAN;
-}
-
-bool TerrainFollower::StuckCheck::live(float d, float alt_amsl, uint64_t sample_time)
-{
-	// false while distance is NAN
-	const bool repeated = fabsf(d - distance) <= 0.f;
-
-	if (!repeated) {
-		distance = d;
-		alt = alt_amsl;
-		samples = 1;
-
-	} else if (sample_time != time && samples < kStuckSamples) {
-		// a sample read again on the next cycle is not a new sample
-		samples++;
-	}
-
-	time = sample_time;
-	return !repeated || (samples < kStuckSamples && fabsf(alt_amsl - alt) <= kStuckAlt);
 }
 
 bool TerrainFollower::ApproachLatch::update(bool past_land_start, bool fresh, bool close, double sp_lat, double sp_lon)
@@ -183,7 +162,8 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 	// a mode switch publishes an IDLE setpoint for a few cycles, which must not end RANGE_LOST, UPLIFT or PULL_UP
 	const bool eligible = in.eligible || (in.no_setpoint && in.now_us < _t_setpoint + kSetpointGap);
-	const bool active = eligible && !in.landing && (in.follow_wanted || in.guard);
+	// a pull-up runs to its recovery in the Return it requested, which wants neither follow nor guard
+	const bool active = eligible && !in.landing && (in.follow_wanted || in.guard || _state == PULL_UP);
 	const bool lost = !_range_ok;
 
 	Output out{};
@@ -220,6 +200,8 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 			} else if (lost) {
 				_loss_alt = in.alt_amsl;
+				// range bursts shorter than the reacquire time move the last valid sample, not the loss
+				_t_lost = _t_last_valid;
 				_state = RANGE_LOST;
 			}
 		}
@@ -229,7 +211,7 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		if (!lost) {
 			_state = in.follow_wanted ? FOLLOW : STANDBY;
 
-		} else if (in.in_return && in.now_us >= _t_last_valid + kReturnLossTime) {
+		} else if (in.in_return && in.now_us >= _t_lost + kReturnLossTime) {
 			// the loss climb holds the Return above its approach altitude, so the landing would never start
 			_state = FAULT;
 		}
@@ -239,7 +221,8 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 	case PULL_UP: {
 			const bool under = used < p.floor;
 
-			if (under && in.alt_amsl > _pullup_alt + kFaultClimb) {
+			// in Return the fence ceiling bounds the climb: FAULT there hands the altitude back under the ridge
+			if (under && !in.in_return && in.alt_amsl > _pullup_alt + kFaultClimb) {
 				_state = FAULT;
 				break;
 			}
@@ -341,6 +324,11 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		if (in.raw_valid) {
 			out.altitude = math::max(out.altitude, in.alt_amsl - used + (in.follow_wanted ? hagl_cmd : uplift));
 		}
+	}
+
+	// the fence Return cannot act inside Return, so a noisy low reading would climb without bound
+	if (out.use_rate && in.in_return) {
+		out.height_rate = math::min(out.height_rate, (in.ceiling - in.alt_amsl) / p.tc);
 	}
 
 	return out;

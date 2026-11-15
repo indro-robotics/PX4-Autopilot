@@ -649,8 +649,8 @@ PARAM_DEFINE_INT32(COM_DLL_EXCEPT, 0);
 /**
  * Set the actuator failure failsafe mode
  *
- * Note: actuator failure needs to be enabled and configured via FD_ACT_*
- * parameters.
+ * The motor failure flag comes from the ESC checks (FD_ACT_* parameters) and from the fixed-wing thrust loss
+ * check (FD_FW_TL_TIME).
  *
  * @min 0
  * @max 3

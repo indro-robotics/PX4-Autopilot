@@ -38,6 +38,7 @@
 #include <drivers/drv_hrt.h>
 #include <parameters/param.h>
 #include "rangefinder.hpp"
+#include "radar_limit.hpp"
 #include <math.h>
 
 const char *const UavcanRangefinderBridge::NAME = "rangefinder";
@@ -94,8 +95,8 @@ void UavcanRangefinderBridge::range_sub_cb(const
 
 	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_RADAR:
 		rangefinder_type = distance_sensor_s::MAV_DISTANCE_SENSOR_RADAR;
-		min_m = _radar_min_m;
-		max_m = _radar_max_m;
+		min_m = radarLimit(_radar_min_m, _range_min_m);
+		max_m = radarLimit(_radar_max_m, _range_max_m);
 		break;
 
 	case uavcan::equipment::range_sensor::Measurement::SENSOR_TYPE_LIDAR:

@@ -259,7 +259,8 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 	if (new_inhibit && o.reason == soaring::REASON_BAND) {
 		if (o.alt_max < o.alt_cut + 20.f) {
 			events::send<float, float>(events::ID("soaring_refused_ceiling"), events::Log::Warning,
-						   "soaring refused - ceiling {1:.0} m under SOAR_ALT_CUT {2:.0} m. Raise GF_MAX_VER_DIST", o.alt_max, o.alt_cut);
+						   "soaring refused - ceiling {1:.0} m less than SOAR_ALT_CUT {2:.0} m plus 20 m. Raise SOAR_ALT_MAX or GF_MAX_VER_DIST",
+						   o.alt_max, o.alt_cut);
 
 		} else {
 			events::send<float, float>(events::ID("soaring_refused_band"), events::Log::Warning,

@@ -40,6 +40,7 @@
 #define PX4_FWLATERALLONGITUDINALCONTROL_HPP
 
 #include <float.h>
+#include <commander/failure_detector/ThrustLoss.hpp>
 #include <fw_performance_model/PerformanceModel.hpp>
 #include <drivers/drv_hrt.h>
 #include <lib/geo/geo.h>
@@ -258,6 +259,13 @@ private:
 	void updateControllerConfiguration();
 
 	float getLoadFactor() const;
+
+	// the ESC checks raise the same flag: without the thrust loss check the flag keeps its stock meaning
+	bool thrustLost() const
+	{
+		return (_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)
+		       && _param_fd_fw_tl_time.get() > 0.f;
+	}
 
 	/**
 	 * @brief Returns an adapted calibrated airspeed setpoint

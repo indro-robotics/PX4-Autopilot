@@ -33,6 +33,8 @@
 
 #pragma once
 
+#include <float.h>
+#include <math.h>
 #include <stdint.h>
 
 class ThrustLoss
@@ -89,6 +91,66 @@ public:
 	static bool orbitEnds(bool touchdown_next, float height, float distance, float glide)
 	{
 		return !touchdown_next || !(height > distance / (glide > 1.f ? glide : 1.f) + 10.f);
+	}
+
+	// the glide arrives under the altitude an orbit item holds to its ring, so the altitude test would keep the item for good
+	static bool orbitRing(bool on_ring, bool at_altitude, bool flagged)
+	{
+		return on_ring && (at_altitude || flagged);
+	}
+
+	// wind along the course changes the ground covered per metre of height: ground speed over airspeed, held to 0.5 to 1.2
+	static float glideOverGround(float glide, float airspeed, float wind_along)
+	{
+		const float scale = (airspeed + wind_along) / airspeed;
+		return glide * (__builtin_isfinite(scale) ? fminf(fmaxf(scale, 0.5f), 1.2f) : 1.f);
+	}
+
+	// the final leaves an orbit on its tangent, turned from the bearing of the centre to the touchdown point by asin(radius / range)
+	static float finalCourse(float bearing, float radius, float range, bool counter_clockwise)
+	{
+		const float turn = asinf(fminf(fabsf(radius) / fmaxf(range, 1.f), 1.f));
+		return counter_clockwise ? bearing - turn : bearing + turn;
+	}
+
+	// an orbit and a circular landing are reached at the circle: the distance to the centre would level the wings on it
+	static float levelHeight(float level_alt, float distance, bool circle, float radius, float glide)
+	{
+		const float reach = (circle && __builtin_isfinite(radius)) ? fmaxf(distance - fabsf(radius), 0.f) : distance;
+		return level_alt + (__builtin_isfinite(reach) ? reach : 0.f) / fmaxf(glide, 1.f);
+	}
+
+	// without a range the height is above the estimator origin: over lower ground the floor would hold the nose up at stall speed
+	static bool pitchFloor(bool takeoff, bool landing, bool range_valid, float range, float flare_alt)
+	{
+		return takeoff || (range_valid && range < 2.f * flare_alt && !landing);
+	}
+
+	// the guidance minimum keeps the ground speed floor into wind; a pilot mode keeps the airspeed its stick commands
+	static float glideAirspeed(bool auto_mode, float setpoint, float airspeed_min, float guidance_min, float airspeed_max)
+	{
+		return auto_mode ? fminf(fmaxf(airspeed_min, guidance_min), airspeed_max) : setpoint;
+	}
+
+	// a dead motor pays for bank with height: 30 deg raises the sink rate by a quarter, 50 deg nearly doubles it
+	static float lateralAccelMax(bool flagged, bool auto_mode, float accel_max)
+	{
+		return (flagged && auto_mode) ? fminf(accel_max, 9.80665f * 0.57735f) : accel_max;
+	}
+
+	// a motor that runs again would fly the rest of the leg at the orbit height: NAN for no write, else the altitude of the orbit setpoint
+	static float returnLegAltitude(bool flagged, bool before_ring, float setpoint_alt, float orbit_alt, float altitude,
+				       float return_alt, bool &lowered)
+	{
+		if (flagged) {
+			const bool lower = fabsf(setpoint_alt - orbit_alt) >= FLT_EPSILON;
+			lowered = lowered || lower;
+			return lower ? orbit_alt : NAN;
+		}
+
+		const bool restore = lowered && before_ring;
+		lowered = false;
+		return restore ? fmaxf(altitude, return_alt) : NAN;
 	}
 
 private:

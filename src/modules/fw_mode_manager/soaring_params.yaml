@@ -28,8 +28,8 @@ parameters:
       decimal: 0
     SOAR_ALT_CUT:
       description:
-        short: Height above home where the motor stops
-        long: The motor stops only while the restart height is at least 30 m lower.
+        short: Height above home where the motor climb ends
+        long: The motor stops here after a climb from the restart height, and only while the restart height is at least 30 m lower. Soaring started above the restart height glides at once.
       type: float
       default: 250
       min: 60
@@ -88,7 +88,7 @@ parameters:
     SOAR_CRSE_ASPD:
       description:
         short: Calibrated airspeed in glide and motor climb
-        long: 0 uses FW_AIRSPD_MIN.
+        long: 0 uses FW_AIRSPD_MIN. CLIMB flies FW_AIRSPD_TRIM from 50 m under SOAR_ALT_CUT. GLIDE flies FW_AIRSPD_MAX from above the effective ceiling down to 20 m under it.
       type: float
       default: 0
       min: 0

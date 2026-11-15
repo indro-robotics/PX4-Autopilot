@@ -2558,6 +2558,9 @@ void EKF2::UpdateRangeSample(ekf2_timestamps_s &ekf2_timestamps)
 		_distance_sensor_subs[i].copy(&samples[i]);
 	}
 
+	// a frozen reading averaged with a live one holds the height above ground through the flare
+	range_select::dropFrozen(samples, _distance_sensor_subs.size(), _range_stuck, -_ekf.getPosition()(2));
+
 	// a sensor silent for 0.1 s drops out of the mean, so one sensor alone still feeds the filter
 	const hrt_abstime timestamp_stale = math::max(ekf2_timestamps.timestamp, 100_ms) - 100_ms;
 

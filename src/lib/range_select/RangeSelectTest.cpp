@@ -35,6 +35,7 @@
 #include <gtest/gtest-spi.h>
 #include <string.h>
 #include <lib/range_select/RangeSelect.hpp>
+#include <drivers/uavcan/sensors/radar_limit.hpp>
 
 using range_select::Selection;
 using range_select::selectDownwardRange;
@@ -376,6 +377,49 @@ TEST(RangeSelectTest, SplitIgnoresSamplesThatAreNotGood)
 	const Selection sel = pickSplit(s, 4, floor_state);
 	EXPECT_EQ(sel.used, 0);
 	EXPECT_FLOAT_EQ(sel.distance, 25.f);
+}
+
+TEST(RangeSelectTest, FrozenSampleLeavesTheFeed)
+{
+	// EKF2's feed in the flare: one lidar frozen at 3 m, the other live and descending at 1 m/s, both at 50 Hz
+	for (int frozen = 0; frozen < 2; frozen++) {
+		range_select::StuckCheck checks[2] {};
+		float floor_state = 0.f;
+
+		for (int k = 0; k < 20; k++) {
+			const uint64_t t = NOW + k * 20'000;
+			const float h = 3.f - 0.02f * k;
+			distance_sensor_s s[2] {sample(h, 50.f, t), sample(h, 50.f, t)};
+			s[frozen].current_distance = 3.f;
+			range_select::dropFrozen(s, 2, checks, h);
+			const Selection sel = selectDownwardRange(s, 2, t - 100'000, floor_state);
+
+			// the 10th sample of the same distance is the first one dropped
+			if (k < 9) {
+				EXPECT_FLOAT_EQ(sel.distance, 0.5f * (3.f + h)) << frozen << " " << k;
+
+			} else {
+				EXPECT_EQ(sel.count, 1) << frozen << " " << k;
+				EXPECT_FLOAT_EQ(sel.distance, h) << frozen << " " << k;
+			}
+		}
+	}
+}
+
+TEST(RangeSelectTest, RadarNodeAtTheDefaultsKeepsTheStockFeed)
+{
+	// UAVCAN_RNG_MIN 0, UAVCAN_RNG_MAX 999, UAVCAN_RDR_MIN and UAVCAN_RDR_MAX -1: a lidar node and a radar node, both good
+	const distance_sensor_s s[] {sample(20.f, 999.f, NOW - 10'000, 100, 0.f),
+				     sample(21.5f, radarLimit(-1.f, 999.f), NOW - 10'000, 100, radarLimit(-1.f, 0.f))
+				    };
+	float floor_state = 0.f;
+	const Selection sel = pick(s, 2, floor_state);
+	EXPECT_EQ(sel.count, 2);
+	EXPECT_FLOAT_EQ(sel.distance, 20.75f);
+	// a radar limit at 0 or above is the radar's own
+	EXPECT_FLOAT_EQ(radarLimit(100.f, 50.f), 100.f);
+	EXPECT_FLOAT_EQ(radarLimit(0.5f, 0.08f), 0.5f);
+	EXPECT_FLOAT_EQ(radarLimit(0.f, 0.08f), 0.f);
 }
 
 TEST(RangeSelectCanary, WrongMeanIsCaught)

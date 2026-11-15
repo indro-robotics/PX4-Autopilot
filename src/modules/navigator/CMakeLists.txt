@@ -34,6 +34,8 @@
 add_subdirectory(GeofenceBreachAvoidance)
 add_subdirectory(MissionFeasibility)
 
+px4_add_unit_gtest(SRC LandingPatternTest.cpp)
+
 set(NAVIGATOR_SOURCES
 	navigator_main.cpp
 	navigator_mode.cpp

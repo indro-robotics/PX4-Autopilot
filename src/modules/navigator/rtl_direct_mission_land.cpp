@@ -94,6 +94,7 @@ void RtlDirectMissionLand::on_activation()
 	_global_pos_sub.update();
 
 	_needs_climbing = false;
+	_leg_lowered = false;
 
 	if (hasMissionLandStart()) {
 		_is_current_planned_mission_item_valid = (goToItem(_mission.land_start_index, false) == PX4_OK);
@@ -125,12 +126,18 @@ void RtlDirectMissionLand::on_active()
 
 	// nor to hold the present height, which an orbit needs on its circle before it takes its own height
 	position_setpoint_s &sp = _navigator->get_position_setpoint_triplet()->current;
-	const float orbit_alt = get_absolute_altitude_for_item(_mission_item);
 
-	if (_mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT && _navigator->thrust_lost() && sp.valid
-	    && fabsf(sp.alt - orbit_alt) >= FLT_EPSILON) {
-		sp.alt = orbit_alt;
-		_navigator->set_position_setpoint_triplet_updated();
+	if (_mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT && sp.valid) {
+		const vehicle_global_position_s &gpos = *_navigator->get_global_position();
+		const bool before_ring = get_distance_to_next_waypoint(gpos.lat, gpos.lon, _mission_item.lat, _mission_item.lon)
+					 > _navigator->get_acceptance_radius() + fabsf(_mission_item.loiter_radius);
+		const float alt = ThrustLoss::returnLegAltitude(_navigator->thrust_lost(), before_ring, sp.alt,
+				  get_absolute_altitude_for_item(_mission_item), gpos.alt, _rtl_alt, _leg_lowered);
+
+		if (PX4_ISFINITE(alt)) {
+			sp.alt = alt;
+			_navigator->set_position_setpoint_triplet_updated();
+		}
 	}
 }
 

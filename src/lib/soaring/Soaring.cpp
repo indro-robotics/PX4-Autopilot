@@ -268,6 +268,8 @@ bool Soaring::turnCheck(const Input &in, float tas)
 void Soaring::update(const Input &in, const Params &p, Output &out)
 {
 	const float dt = (_last_us > 0 && in.time_us > _last_us) ? fminf((in.time_us - _last_us) * 1e-6f, 0.1f) : 0.f;
+	// an external mode runs no update, and the Hold after it is a mode change like any other
+	const bool gap = _last_us > 0 && in.time_us > _last_us + 1000000;
 	_last_us = in.time_us;
 
 	const float cas = finite(in.cas);
@@ -331,7 +333,7 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 
 	uint8_t inhibit = REASON_NONE;
 
-	if (!in.allowed) {
+	if (!in.allowed || gap) {
 		inhibit = in.inhibit_reason != REASON_NONE ? in.inhibit_reason : (uint8_t)REASON_MODE;
 
 	} else if (!in.wind_valid) {

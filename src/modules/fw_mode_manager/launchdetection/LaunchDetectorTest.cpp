@@ -294,3 +294,43 @@ TEST_F(LaunchDetectorTest, PublishedWaitingUntilKnockSpeed)
 	run(stock, 0.15f, kShotAccel, 0.f);
 	EXPECT_EQ(stock.getPublishedState(), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
 }
+
+TEST(LaunchLatch, AbortHoldsInAutoAndOnTheGround)
+{
+	using launchdetection::abortLatch;
+	// FW_AIRSPD_MIN 14 m/s: the detector aborts, the latch sets and holds after Takeoff resets the detector
+	EXPECT_TRUE(abortLatch(false, true, true, false, false, true, 9.f, 14.f));
+	EXPECT_TRUE(abortLatch(true, true, false, false, false, true, 15.f, 14.f));
+	// a pilot mode on the ground, or gliding under the minimum airspeed, is no rescue
+	EXPECT_TRUE(abortLatch(true, true, false, true, true, true, 15.f, 14.f));
+	EXPECT_TRUE(abortLatch(true, true, false, true, false, true, 13.9f, 14.f));
+	// an airspeed that does not read clears nothing
+	EXPECT_TRUE(abortLatch(true, true, false, true, false, false, 15.f, 14.f));
+	EXPECT_FALSE(abortLatch(false, true, false, false, false, true, 15.f, 14.f));
+}
+
+TEST(LaunchLatch, AbortClearsOnceThePilotFliesItAway)
+{
+	using launchdetection::abortLatch;
+	// Stabilized at 15 m/s off the ground: the Return that follows flies with its motor
+	const bool latched = abortLatch(true, true, false, true, false, true, 15.f, 14.f);
+	EXPECT_FALSE(latched);
+	EXPECT_FALSE(abortLatch(latched, true, false, false, false, true, 15.f, 14.f));
+	// a disarm clears it in any mode
+	EXPECT_FALSE(abortLatch(true, false, false, false, true, true, 0.f, 14.f));
+	EXPECT_FALSE(abortLatch(true, false, true, false, true, true, 0.f, 14.f));
+}
+
+TEST(LaunchLatch, UnderspeedProtectionReturnsPastTheMinimumAirspeed)
+{
+	using launchdetection::underspeedLatch;
+	// the rail exit at 12.3 m/s is under FW_AIRSPD_MIN 14 m/s
+	EXPECT_FALSE(underspeedLatch(false, true, 12.3f, 14.f));
+	EXPECT_FALSE(underspeedLatch(false, true, 14.f, 14.f));
+	EXPECT_TRUE(underspeedLatch(false, true, 14.2f, 14.f));
+	// it stays on when a motor cut drops the airspeed back under the minimum
+	EXPECT_TRUE(underspeedLatch(true, true, 11.f, 14.f));
+	EXPECT_TRUE(underspeedLatch(true, false, 11.f, 14.f));
+	// a stale airspeed sets nothing
+	EXPECT_FALSE(underspeedLatch(false, false, 17.f, 14.f));
+}

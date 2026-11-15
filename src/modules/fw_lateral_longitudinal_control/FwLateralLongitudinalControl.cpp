@@ -291,8 +291,9 @@ void FwLateralLongitudinalControl::Run()
 			}
 
 			lateral_accel_sp = getCorrectedLateralAccelSetpoint(lateral_accel_sp);
-			lateral_accel_sp = math::constrain(lateral_accel_sp, -_lateral_configuration.lateral_accel_max,
-							   _lateral_configuration.lateral_accel_max);
+			const float lateral_accel_max = ThrustLoss::lateralAccelMax(thrustLost(),
+							_control_mode_sub.get().flag_control_auto_enabled, _lateral_configuration.lateral_accel_max);
+			lateral_accel_sp = math::constrain(lateral_accel_sp, -lateral_accel_max, lateral_accel_max);
 			roll_sp = mapLateralAccelerationToRollAngle(lateral_accel_sp);
 
 			fixed_wing_lateral_status_s fixed_wing_lateral_status{};
@@ -395,9 +396,7 @@ FwLateralLongitudinalControl::tecs_update_pitch_throttle(const float control_int
 	const float airspeed_rate_estimate = 0.f;
 
 	// the fast descent would dive the thrust loss glide at FW_AIRSPD_MAX and spend the height its reach is counted on
-	const bool thrust_lost = (_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)
-				 && _param_fd_fw_tl_time.get() > 0.f;
-	_tecs.set_fast_descend_altitude_error(thrust_lost ? -1.f : _param_fw_t_fast_alt_err.get());
+	_tecs.set_fast_descend_altitude_error(thrustLost() ? -1.f : _param_fw_t_fast_alt_err.get());
 
 	_tecs.update(_long_control_state.pitch_rad - radians(_param_fw_psp_off.get()),
 		     _long_control_state.altitude_msl,
@@ -667,9 +666,9 @@ FwLateralLongitudinalControl::adapt_airspeed_setpoint(const float control_interv
 	// constrain airspeed to feasible range
 	calibrated_airspeed_setpoint = math::constrain(calibrated_airspeed_setpoint, system_min_airspeed, system_max_airspeed);
 
-	if ((_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)
-	    && _param_fd_fw_tl_time.get() > 0.f) {
-		calibrated_airspeed_setpoint = system_min_airspeed;
+	if (thrustLost()) {
+		calibrated_airspeed_setpoint = ThrustLoss::glideAirspeed(_control_mode_sub.get().flag_control_auto_enabled,
+					       calibrated_airspeed_setpoint, system_min_airspeed, calibrated_min_airspeed_guidance, system_max_airspeed);
 	}
 
 	if (!PX4_ISFINITE(_airspeed_slew_rate_controller.getState())) {

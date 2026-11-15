@@ -218,7 +218,11 @@ PARAM_DEFINE_INT32(FD_ACT_MOT_TOUT, 100);
  *
  * Time the thrust loss condition holds before the motor failure flag sets, and the time the
  * energy gain holds before it clears. The condition is a throttle setpoint at or above FD_FW_TL_THR
- * while the TECS specific energy rate is below FD_FW_TL_RATE.
+ * while the TECS specific energy rate is below FD_FW_TL_RATE. The check runs where TECS runs: in Manual,
+ * Stabilized and Acro the flag keeps its state.
+ * Above 0, a motor failure flag from any check, the ESC checks (FD_ACT_EN) included, also flies the glide: the
+ * minimum airspeed, wings level under FW_TL_LVL_ALT, a Return without its climb, the orbit end of FW_TL_GLIDE and
+ * no fast descent.
  * Set to 0 to disable the check.
  *
  * @unit s
@@ -248,7 +252,9 @@ PARAM_DEFINE_FLOAT(FD_FW_TL_THR, 0.7f);
  * Fixed-wing thrust loss energy rate threshold
  *
  * Specific energy rate, total energy rate over g, below which thrust is lost.
- * The flag clears once the rate stays above its negative.
+ * The flag clears once the rate stays above its negative for FD_FW_TL_TIME at or above FW_TL_LVL_ALT, not its raised
+ * value; under that height it holds until landed. A value below the glide sink rate at FW_AIRSPD_MIN never flags a stopped motor, and
+ * its negative must stay within the climb rate at full throttle.
  *
  * @unit m/s
  * @min -5.0

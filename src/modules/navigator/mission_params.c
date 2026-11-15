@@ -166,7 +166,7 @@ PARAM_DEFINE_FLOAT(MIS_COMMAND_TOUT, 0.f);
 /**
  * Landing pattern written at arming
  *
- * On a fixed wing that is not a VTOL, arming replaces an empty mission, a firmware-written pattern or an unfit operator landing pattern; operator Land flies the mission landing when Return would; a failsafe Land continues one in progress, else lands stock.
+ * On a fixed wing that is not a VTOL, arming replaces an empty mission, a firmware-written pattern or an unfit operator landing pattern; operator Land flies the mission landing when Return would; a failsafe Hold or Land continues one in progress, else acts stock; Return continues a Mission past its land start. A failed write or mission check undoes the arming: MIS_LP_DIST under 50 m, MIS_LP_ALT under 5 m and MIS_LP_OFFSET inside 5 m fail the write, and MIS_TKO_LAND_REQ other than 0 or 2 fails the check.
  *
  * @boolean
  * @group Mission
@@ -190,7 +190,7 @@ PARAM_DEFINE_FLOAT(MIS_LP_AHEAD, 15.0f);
 /**
  * Landing pattern touchdown offset
  *
- * Distance of the touchdown point right of the launch heading, negative left.
+ * Distance of the touchdown point right of the launch heading, negative left. At least 5 m to either side.
  *
  * @unit m
  * @min -50

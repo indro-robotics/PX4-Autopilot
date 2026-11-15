@@ -100,32 +100,34 @@ PARAM_DEFINE_FLOAT(UAVCAN_RNG_MAX, 999.0f);
 /**
  * UAVCAN radar minimum range
  *
- * Minimum valid range of a rangefinder node that reports the radar sensor type. Other nodes use UAVCAN_RNG_MIN.
+ * Minimum valid range of a rangefinder node that reports the radar sensor type. Other nodes use UAVCAN_RNG_MIN,
+ * as does a radar node while this is below 0.
  *
  * @unit m
- * @min 0.0
+ * @min -1.0
  * @max 500.0
  * @decimal 2
  * @increment 0.01
  * @reboot_required true
  * @group UAVCAN
  */
-PARAM_DEFINE_FLOAT(UAVCAN_RDR_MIN, 0.5f);
+PARAM_DEFINE_FLOAT(UAVCAN_RDR_MIN, -1.0f);
 
 /**
  * UAVCAN radar maximum range
  *
- * Maximum valid range of a rangefinder node that reports the radar sensor type. Other nodes use UAVCAN_RNG_MAX.
+ * Maximum valid range of a rangefinder node that reports the radar sensor type. Other nodes use UAVCAN_RNG_MAX,
+ * as does a radar node while this is below 0.
  *
  * @unit m
- * @min 0.0
+ * @min -1.0
  * @max 1000.0
  * @decimal 1
  * @increment 0.1
  * @reboot_required true
  * @group UAVCAN
  */
-PARAM_DEFINE_FLOAT(UAVCAN_RDR_MAX, 100.0f);
+PARAM_DEFINE_FLOAT(UAVCAN_RDR_MAX, -1.0f);
 
 /**
  * UAVCAN fuel tank maximum capacity

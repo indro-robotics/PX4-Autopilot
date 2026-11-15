@@ -36,6 +36,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <lib/range_select/StuckCheck.hpp>
 
 class TerrainFollower
 {
@@ -44,20 +45,13 @@ public:
 	enum Nav : uint8_t { NAV_OTHER, NAV_HOLD, NAV_MISSION, NAV_RETURN };
 
 	struct Input  { uint64_t now_us, range_time_us; float dt; bool eligible, landing, follow_wanted, guard, in_return, no_setpoint;
-			float alt_amsl, vz_up, nav_alt; bool raw_valid; float hagl_raw, range_max;
+			float alt_amsl, vz_up, nav_alt, ceiling; bool raw_valid; float hagl_raw, range_max;
 			bool ekf_valid; float hagl_ekf; };
 	struct Params { float hagl, floor, tc, sink, climb_max, loss_up, ttg, bank, max_down; };
 	struct Output { uint8_t state; bool use_rate; float height_rate, altitude; bool min_airspeed,
 			cap_bank, request_return, descent_limited; float hagl_cmd, hagl_used, terrain_rate; };
 
-	// One per sensor instance: a distance repeated across more than 1 m of altitude change or over 10 new samples is a frozen sensor.
-	struct StuckCheck {
-		float distance{NAN};
-		float alt{NAN};
-		uint64_t time{0};
-		uint8_t samples{0};
-		bool live(float d, float alt_amsl, uint64_t sample_time);
-	};
+	using StuckCheck = range_select::StuckCheck;
 
 	// The approach circle and every leg after it while the mission index stays past DO_LAND_START.
 	struct ApproachLatch {
@@ -72,6 +66,14 @@ public:
 
 	void reset() { *this = TerrainFollower{}; }
 
+	// an estimator height reset moves the altitude estimate, not the aircraft, the ground or the loss point
+	void heightReset(float delta)
+	{
+		_terrain += delta;
+		_loss_alt += delta;
+		_pullup_alt += delta;
+	}
+
 	bool latchFollow(bool bits_set, bool airborne);
 
 	bool rangeOk() const { return _range_ok; }
@@ -85,6 +87,12 @@ public:
 	}
 
 	static bool guardActs(uint8_t state) { return state == UPLIFT || state == PULL_UP; }
+
+	// LAND after a loiter is the landing only from its circle on: the pattern orbit before it is the transit
+	static bool landingContext(bool land_current, bool land_next, bool loiter_current, bool on_circle)
+	{
+		return land_current || (land_next && (!loiter_current || on_circle));
+	}
 
 	static float rawHagl(float range, float cos_tilt);
 
@@ -102,6 +110,7 @@ private:
 	uint64_t _t_sample{0};
 	uint64_t _t_valid_since{0};
 	uint64_t _t_last_valid{0};
+	uint64_t _t_lost{0};
 	uint64_t _t_low{0};
 	uint64_t _t_recover{0};
 	uint64_t _t_under{0};

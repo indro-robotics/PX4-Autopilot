@@ -258,8 +258,9 @@ MissionBlock::is_mission_item_reached_or_completed()
 						&dist_xy, &dist_z);
 
 				// check if within loiter radius around wp, if yes then set altitude sp to mission item
-				if (dist >= 0.0f && dist_xy <= (_navigator->get_acceptance_radius() + mission_item_loiter_radius_abs)
-				    && dist_z <= _navigator->get_altitude_acceptance_radius()) {
+				if (ThrustLoss::orbitRing(dist >= 0.0f
+							  && dist_xy <= (_navigator->get_acceptance_radius() + mission_item_loiter_radius_abs),
+							  dist_z <= _navigator->get_altitude_acceptance_radius(), _navigator->thrust_lost())) {
 
 					curr_sp->alt = mission_item_altitude_amsl;
 					curr_sp->type = position_setpoint_s::SETPOINT_TYPE_LOITER;
@@ -274,9 +275,14 @@ MissionBlock::is_mission_item_reached_or_completed()
 				if (_navigator->thrust_lost()) {
 					const position_setpoint_s &land = _navigator->get_position_setpoint_triplet()->next;
 					const vehicle_global_position_s &gpos = *_navigator->get_global_position();
+					const float course = ThrustLoss::finalCourse(get_bearing_to_next_waypoint(_mission_item.lat, _mission_item.lon,
+							     land.lat, land.lon), mission_item_loiter_radius_abs,
+							     get_distance_to_next_waypoint(_mission_item.lat, _mission_item.lon, land.lat, land.lon),
+							     curr_sp->loiter_direction_counter_clockwise);
 					_waypoint_position_reached = ThrustLoss::orbitEnds(land.valid
 								     && land.type == position_setpoint_s::SETPOINT_TYPE_LAND, gpos.alt - land.alt,
-								     get_distance_to_next_waypoint(gpos.lat, gpos.lon, land.lat, land.lon), _navigator->get_thrust_loss_glide());
+								     get_distance_to_next_waypoint(gpos.lat, gpos.lon, land.lat, land.lon),
+								     _navigator->get_thrust_loss_glide(course));
 				}
 			}
 

@@ -53,6 +53,7 @@ protected:
 		in.follow_wanted = true;
 		in.guard = false;
 		in.in_return = false;
+		in.ceiling = INFINITY;
 		setHeight(30.f);
 		in.nav_alt = kTerrain + 30.f;
 		in.range_max = 50.f;
@@ -1092,4 +1093,169 @@ TEST_F(TerrainFollowerTest, SetpointOlderThanMissionIndexDoesNotLatch)
 	EXPECT_FALSE(latch.update(false, true, true, 45.312, -75.755));
 	EXPECT_FALSE(latch.update(true, false, true, 45.312, -75.755));
 	EXPECT_FALSE(latch.update(true, true, false, 45.309, -75.747));
+}
+
+TEST_F(TerrainFollowerTest, LandNextIsTheLandingFromTheCircleOn)
+{
+	// the firmware pattern: the orbit current, LAND next, kilometres from the circle or on it
+	EXPECT_FALSE(TF::landingContext(false, true, true, false));
+	EXPECT_TRUE(TF::landingContext(false, true, true, true));
+	// a final waypoint ahead of LAND, and LAND itself
+	EXPECT_TRUE(TF::landingContext(false, true, false, false));
+	EXPECT_TRUE(TF::landingContext(true, false, false, false));
+	EXPECT_FALSE(TF::landingContext(false, false, true, true));
+	EXPECT_FALSE(TF::landingContext(false, false, false, false));
+}
+
+TEST_F(TerrainFollowerTest, PullUpRunsToRecoveryInItsReturn)
+{
+	// follow in Hold without the guard bit: the Return the pull-up requests wants neither follow nor guard
+	p.ttg = 0.f;
+	follow();
+	setHeight(5.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	in.follow_wanted = false;
+	in.in_return = true;
+	EXPECT_EQ(run(2.f).state, TF::PULL_UP);
+	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+	// 1.5 x 8 = 12 m without closure for 1 s recovers, and the Return then flies its own altitude
+	setHeight(13.f);
+	run(1.1f);
+	EXPECT_EQ(out.state, TF::OFF);
+	EXPECT_FALSE(out.use_rate);
+}
+
+TEST_F(TerrainFollowerTest, ReturnLossFaultsThroughRangeBursts)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	EXPECT_EQ(run(0.6f).state, TF::RANGE_LOST);
+
+	// a lidar at the edge of its range: 1.5 s of valid samples every 10 s, under the 2 s that reacquire
+	for (int i = 0; i < 2; i++) {
+		run(8.5f);
+		setHeight(15.f);
+		run(1.5f);
+		in.raw_valid = false;
+		in.hagl_raw = NAN;
+	}
+
+	// 0.6 + 2 x 10 + 9.3 = 29.9 s from the last sample before the loss
+	EXPECT_EQ(run(9.3f).state, TF::RANGE_LOST);
+	EXPECT_EQ(run(0.2f).state, TF::FAULT);
+}
+
+TEST_F(TerrainFollowerTest, ReturnPullUpClimbsPastFortyMetres)
+{
+	// a ridge rising under the Return 5 m below the aircraft: FAULT would hand the altitude back under the crest
+	p.ttg = 0.f;
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(5.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	const float entry = in.alt_amsl;
+
+	while (in.alt_amsl < entry + 60.f) {
+		in.alt_amsl += 3.f * kDt;
+		step();
+	}
+
+	EXPECT_EQ(out.state, TF::PULL_UP);
+	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+}
+
+TEST_F(TerrainFollowerTest, FenceCeilingBoundsTheClimbInReturnOnly)
+{
+	p.ttg = 0.f;
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	in.ceiling = kTerrain + 30.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(5.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	// 10 m under the ceiling: (130 - 120) / 4 = 2.5 m/s, under the 3 m/s climb
+	setHeight(5.f, kTerrain + 15.f);
+	step();
+	EXPECT_NEAR(out.height_rate, 2.5f, 1e-3f);
+	// at the ceiling the climb stops and the guard stays
+	setHeight(5.f, kTerrain + 25.f);
+	EXPECT_EQ(run(1.f).state, TF::PULL_UP);
+	EXPECT_NEAR(out.height_rate, 0.f, 1e-3f);
+	// in Hold the fence Return acts, so the guard climbs through the ceiling
+	in.in_return = false;
+	EXPECT_EQ(step().state, TF::PULL_UP);
+	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+}
+
+TEST_F(TerrainFollowerTest, HeightResetKeepsTheLossClimb)
+{
+	follow();
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// lost at 130 m, target 140 m; a 5 m reset raises the estimate, not the aircraft
+	in.alt_amsl += 5.f;
+	tf.heightReset(5.f);
+	step();
+	EXPECT_NEAR(out.altitude, kTerrain + 45.f, 0.01f);
+}
+
+TEST_F(TerrainFollowerTest, HeightResetKeepsTheFaultCap)
+{
+	p.ttg = 0.f;
+	follow();
+	setHeight(5.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	const float entry = in.alt_amsl;
+	in.alt_amsl += 5.f;
+	tf.heightReset(5.f);
+
+	// 39 m of climb over the pull-up point, 44 m of estimate
+	while (in.alt_amsl < entry + 44.f) {
+		in.alt_amsl += 3.f * kDt;
+		step();
+	}
+
+	EXPECT_EQ(out.state, TF::PULL_UP);
+
+	while (in.alt_amsl < entry + 46.f) {
+		in.alt_amsl += 3.f * kDt;
+		step();
+	}
+
+	EXPECT_EQ(out.state, TF::FAULT);
+}
+
+TEST_F(TerrainFollowerTest, HeightResetKeepsTheHeightWithoutRange)
+{
+	follow();
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	step();
+	ASSERT_FLOAT_EQ(out.hagl_used, 30.f);
+	in.alt_amsl += 5.f;
+	tf.heightReset(5.f);
+	step();
+	EXPECT_FLOAT_EQ(out.hagl_used, 30.f);
 }

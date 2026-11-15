@@ -59,6 +59,20 @@ static constexpr float kRollMax = math::radians(30.f);
 static constexpr float kPitchMin = math::radians(-30.f);
 static constexpr float kPitchMax = math::radians(45.f);
 
+// a pilot who climbs an aborted launch away hands a flying aircraft back: the latch would glide it down at idle in the next auto mode
+inline bool abortLatch(bool latched, bool armed, bool detector_aborted, bool pilot_attitude_mode, bool landed,
+		       bool airspeed_valid, float airspeed, float airspeed_min)
+{
+	const bool flown_away = pilot_attitude_mode && !landed && airspeed_valid && airspeed > airspeed_min;
+	return armed && !flown_away && (latched || detector_aborted);
+}
+
+// the rail exit is under the minimum airspeed; past it a motor cut in the climb must pitch for airspeed, not for the climb rate
+inline bool underspeedLatch(bool latched, bool airspeed_valid, float airspeed, float airspeed_min)
+{
+	return latched || (airspeed_valid && airspeed > airspeed_min);
+}
+
 class __EXPORT LaunchDetector : public ModuleParams
 {
 public:

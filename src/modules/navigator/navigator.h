@@ -58,6 +58,7 @@
 #include "GeofenceBreachAvoidance/geofence_breach_avoidance.h"
 
 #if CONFIG_NAVIGATOR_ADSB
+#include <commander/failure_detector/ThrustLoss.hpp>
 #include <lib/adsb/AdsbConflict.h>
 #endif // CONFIG_NAVIGATOR_ADSB
 #include <lib/perf/perf_counter.h>
@@ -88,6 +89,7 @@
 #include <uORB/topics/vehicle_local_position.h>
 #include <uORB/topics/vehicle_roi.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/wind.h>
 #include <uORB/topics/mode_completed.h>
 #include <uORB/uORB.h>
 
@@ -293,7 +295,16 @@ public:
 	float get_nav_min_gnd_dist_param() const { return _param_nav_min_gnd_dist.get(); }
 
 	float get_vtol_back_trans_deceleration() const { return _param_back_trans_dec_mss; }
-	float get_thrust_loss_glide() const { return _param_fw_tl_glide; }
+	// FW_TL_GLIDE over the ground along a course [rad]; without a wind estimate of the last 10 s the still-air ratio
+	float get_thrust_loss_glide(float course)
+	{
+		wind_s wind{};
+		return (_wind_sub.copy(&wind) && hrt_elapsed_time(&wind.timestamp) < 10_s)
+		       ? ThrustLoss::glideOverGround(_param_fw_tl_glide,
+						     hypotf(_local_pos.vx - wind.windspeed_north, _local_pos.vy - wind.windspeed_east),
+						     wind.windspeed_north * cosf(course) + wind.windspeed_east * sinf(course))
+		       : _param_fw_tl_glide;
+	}
 
 	bool force_vtol();
 
@@ -333,6 +344,7 @@ private:
 	uORB::SubscriptionInterval _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
 	uORB::Subscription _global_pos_sub{ORB_ID(vehicle_global_position)};	/**< global position subscription */
+	uORB::Subscription _wind_sub{ORB_ID(wind)};
 	uORB::Subscription _gps_pos_sub{ORB_ID(vehicle_gps_position)};		/**< gps position subscription */
 	uORB::Subscription _home_pos_sub{ORB_ID(home_position)};		/**< home position subscription */
 	uORB::Subscription _land_detected_sub{ORB_ID(vehicle_land_detected)};	/**< vehicle land detected subscription */

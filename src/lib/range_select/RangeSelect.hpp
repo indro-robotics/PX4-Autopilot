@@ -37,6 +37,8 @@
 #include <stdint.h>
 #include <uORB/topics/distance_sensor.h>
 
+#include "StuckCheck.hpp"
+
 namespace range_select
 {
 
@@ -133,6 +135,16 @@ inline Selection selectDownwardRange(const distance_sensor_s *samples, int n, ui
 	}
 
 	return sel;
+}
+
+// checks[i] follows samples[i] from one call to the next; a frozen sample turns stale, so the selection leaves it out
+inline void dropFrozen(distance_sensor_s *samples, int n, StuckCheck *checks, float alt)
+{
+	for (int i = 0; i < n; i++) {
+		if (!checks[i].live(samples[i].current_distance, alt, samples[i].timestamp)) {
+			samples[i].timestamp = 0;
+		}
+	}
 }
 
 } // namespace range_select

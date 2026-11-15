@@ -268,4 +268,152 @@ TEST(ThrustLossOrbit, GlideRatioUnderOneCountsAsOne)
 	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 111.f, 100.f, 0.5f));
 }
 
+TEST(ThrustLossOrbit, RingCountsUnderTheHeldAltitudeWithTheFlag)
+{
+	// a glide from 45 m reaches the ring 23 m under the altitude the item holds, far outside NAV_FW_ALTL_RAD 2 m
+	EXPECT_TRUE(ThrustLoss::orbitRing(true, false, true));
+	EXPECT_TRUE(ThrustLoss::orbitRing(true, true, false));
+	// with the motor running the stock altitude test stands
+	EXPECT_FALSE(ThrustLoss::orbitRing(true, false, false));
+	// the flag ends no orbit the aircraft has not reached
+	EXPECT_FALSE(ThrustLoss::orbitRing(false, false, true));
+	EXPECT_FALSE(ThrustLoss::orbitRing(false, true, true));
+}
+
+TEST(ThrustLossWind, GlideRatioFollowsGroundSpeedOverAirspeedWithinBounds)
+{
+	EXPECT_FLOAT_EQ(ThrustLoss::glideOverGround(8.f, 14.f, 0.f), 8.f);
+	// 4 m/s headwind at 14 m/s: 8 * 10 / 14 = 5.714
+	EXPECT_NEAR(ThrustLoss::glideOverGround(8.f, 14.f, -4.f), 5.714f, 0.001f);
+	// 6 m/s headwind: 8 * 8 / 14 = 4.571, above the 0.5 bound of 4.0
+	EXPECT_NEAR(ThrustLoss::glideOverGround(8.f, 14.f, -6.f), 4.571f, 0.001f);
+	// 10 m/s headwind would give 8 * 4 / 14 = 2.29: held at 8 * 0.5
+	EXPECT_FLOAT_EQ(ThrustLoss::glideOverGround(8.f, 14.f, -10.f), 4.f);
+	// 2 m/s tailwind: 8 * 16 / 14 = 9.143; 6 m/s would give 11.4: held at 8 * 1.2
+	EXPECT_NEAR(ThrustLoss::glideOverGround(8.f, 14.f, 2.f), 9.143f, 0.001f);
+	EXPECT_FLOAT_EQ(ThrustLoss::glideOverGround(8.f, 14.f, 6.f), 9.6f);
+	// no airspeed or no wind component leaves the still-air ratio
+	EXPECT_FLOAT_EQ(ThrustLoss::glideOverGround(8.f, 0.f, 0.f), 8.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::glideOverGround(8.f, 14.f, NAN), 8.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::glideOverGround(8.f, NAN, -4.f), 8.f);
+}
+
+TEST(ThrustLossWind, HeadwindOnTheFinalEndsTheOrbitHigher)
+{
+	// 254 m of final in a 6 m/s headwind at 14 m/s: 254 / 4.571 + 10 = 65.6 m, against 41.75 m in still air
+	const float glide = ThrustLoss::glideOverGround(8.f, 14.f, -6.f);
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 66.f, 254.f, glide));
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 65.f, 254.f, glide));
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 42.f, 254.f, 8.f));
+}
+
+TEST(ThrustLossWind, FinalCourseIsTheTangentFromTheOrbit)
+{
+	// firmware pattern: radius 60 m, centre sqrt(200^2 + 60^2) = 208.8 m from the touchdown, asin(60 / 208.8) = 16.70 deg
+	const float turn = 16.70f * static_cast<float>(M_PI) / 180.f;
+	EXPECT_NEAR(ThrustLoss::finalCourse(1.f, 60.f, 208.8f, false), 1.f + turn, 0.001f);
+	EXPECT_NEAR(ThrustLoss::finalCourse(1.f, 60.f, 208.8f, true), 1.f - turn, 0.001f);
+	EXPECT_NEAR(ThrustLoss::finalCourse(1.f, -60.f, 208.8f, false), 1.f + turn, 0.001f);
+	// a touchdown point inside the circle has no tangent: a quarter turn, never NAN
+	EXPECT_NEAR(ThrustLoss::finalCourse(0.f, 60.f, 30.f, false), static_cast<float>(M_PI_2), 0.001f);
+	EXPECT_NEAR(ThrustLoss::finalCourse(0.f, 60.f, 0.f, false), static_cast<float>(M_PI_2), 0.001f);
+}
+
+TEST(ThrustLossLevel, HeightRisesByTheReachToTheSetpoint)
+{
+	// FW_TL_LVL_ALT 20 m, 300 m to a waypoint at 8:1: 20 + 300 / 8 = 57.5 m
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 300.f, false, NAN, 8.f), 57.5f);
+	// an orbit of 60 m is reached 60 m earlier: 20 + 240 / 8 = 50 m
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 300.f, true, 60.f, 8.f), 50.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 300.f, true, -60.f, 8.f), 50.f);
+	// on the circle of a circular landing the height is FW_TL_LVL_ALT, not 20 + 60 / 8 = 27.5 m
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 60.f, true, 60.f, 8.f), 20.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 40.f, true, 60.f, 8.f), 20.f);
+	// a waypoint 60 m away is not a circle
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 60.f, false, 60.f, 8.f), 27.5f);
+	// a 6 m/s headwind at 14 m/s halves the reach: 20 + 240 / 4.571 = 72.5 m
+	EXPECT_NEAR(ThrustLoss::levelHeight(20.f, 300.f, true, 60.f, ThrustLoss::glideOverGround(8.f, 14.f, -6.f)), 72.5f, 0.1f);
+	// a distance or a radius that does not read, and a ratio under 1
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, NAN, false, NAN, 8.f), 20.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 300.f, true, NAN, 8.f), 57.5f);
+	EXPECT_FLOAT_EQ(ThrustLoss::levelHeight(20.f, 80.f, false, NAN, 0.f), 100.f);
+}
+
+TEST(ThrustLossFloor, NeedsARangeToTheGroundOutsideTakeoff)
+{
+	// FW_LND_FLALT 1.5 m: the floor acts under 3 m of range
+	EXPECT_TRUE(ThrustLoss::pitchFloor(false, false, true, 2.9f, 1.5f));
+	EXPECT_FALSE(ThrustLoss::pitchFloor(false, false, true, 3.1f, 1.5f));
+	// 3 m above the estimator origin over a valley 70 m deep is no height above ground
+	EXPECT_FALSE(ThrustLoss::pitchFloor(false, false, false, 2.9f, 1.5f));
+	EXPECT_FALSE(ThrustLoss::pitchFloor(false, false, false, 0.f, 1.5f));
+	// a landing flies its own flare
+	EXPECT_FALSE(ThrustLoss::pitchFloor(false, true, true, 1.f, 1.5f));
+	// Takeoff keeps the floor at any height and without a range
+	EXPECT_TRUE(ThrustLoss::pitchFloor(true, false, false, 40.f, 1.5f));
+	EXPECT_TRUE(ThrustLoss::pitchFloor(true, false, true, 40.f, 1.5f));
+}
+
+TEST(ThrustLossAirspeed, GuidanceMinimumRaisesThePinInAutoOnly)
+{
+	// FW_AIRSPD_MIN 14 and FW_AIRSPD_MAX 23: guidance asks 16 m/s to hold its ground speed floor into wind
+	EXPECT_FLOAT_EQ(ThrustLoss::glideAirspeed(true, 18.f, 14.f, 16.f, 23.f), 16.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::glideAirspeed(true, 18.f, 14.f, 0.f, 23.f), 14.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::glideAirspeed(true, 18.f, 14.f, 30.f, 23.f), 23.f);
+	// Position and Altitude mode keep the airspeed the stick commands
+	EXPECT_FLOAT_EQ(ThrustLoss::glideAirspeed(false, 18.f, 14.f, 16.f, 23.f), 18.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::glideAirspeed(false, 21.f, 14.f, 0.f, 23.f), 21.f);
+}
+
+TEST(ThrustLossBank, AutoModesBankThirtyDegreesWithTheFlag)
+{
+	// 9.80665 * tan(30 deg) = 5.662 m/s^2; FW_R_LIM 50 deg is 11.69 m/s^2
+	EXPECT_NEAR(ThrustLoss::lateralAccelMax(true, true, 11.69f), 5.662f, 0.001f);
+	EXPECT_NEAR(atanf(ThrustLoss::lateralAccelMax(true, true, 11.69f) / 9.80665f) * 180.f / static_cast<float>(M_PI), 30.f, 0.01f);
+	// a lower limit of the mode stands: wings level under the level height, the wing strike limit near the ground
+	EXPECT_FLOAT_EQ(ThrustLoss::lateralAccelMax(true, true, 0.f), 0.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::lateralAccelMax(true, true, 3.f), 3.f);
+	// the pilot and a running motor keep the full bank
+	EXPECT_FLOAT_EQ(ThrustLoss::lateralAccelMax(true, false, 11.69f), 11.69f);
+	EXPECT_FLOAT_EQ(ThrustLoss::lateralAccelMax(false, true, 11.69f), 11.69f);
+}
+
+TEST(ThrustLossReturnLeg, TakesTheLegHeightBackOnceAfterAClearBeforeTheRing)
+{
+	// Return from 120 m: orbit at home + 22 m, RTL_RETURN_ALT 30 m, altitudes above home
+	bool lowered = false;
+	EXPECT_FLOAT_EQ(ThrustLoss::returnLegAltitude(true, true, 120.f, 22.f, 118.f, 30.f, lowered), 22.f);
+	// the setpoint holds the orbit height while the flag stays
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(true, true, 22.f, 22.f, 110.f, 30.f, lowered)));
+	// the flag clears at 104 m, 1 km before the ring: the leg holds 104 m, as a Return entered there would
+	EXPECT_FLOAT_EQ(ThrustLoss::returnLegAltitude(false, true, 22.f, 22.f, 104.f, 30.f, lowered), 104.f);
+	// once: the next cycles write nothing, so the ring can hand the orbit its own height
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(false, true, 104.f, 22.f, 104.f, 30.f, lowered)));
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(false, false, 22.f, 22.f, 30.f, 30.f, lowered)));
+}
+
+TEST(ThrustLossReturnLeg, ClimbsToTheReturnAltitudeWhenTheClearComesBelowIt)
+{
+	// cut in the Hold at 45 m, clear at 26 m: the leg climbs to RTL_RETURN_ALT 30 m and leaves the orbit's 22 m
+	bool lowered = false;
+	EXPECT_FLOAT_EQ(ThrustLoss::returnLegAltitude(true, true, 45.f, 22.f, 44.f, 30.f, lowered), 22.f);
+	EXPECT_FLOAT_EQ(ThrustLoss::returnLegAltitude(false, true, 22.f, 22.f, 26.f, 30.f, lowered), 30.f);
+}
+
+TEST(ThrustLossReturnLeg, WritesNothingOnTheRingOrWithoutALoweredLeg)
+{
+	// a clear on the ring leaves the orbit at its own height
+	bool lowered = false;
+	EXPECT_FLOAT_EQ(ThrustLoss::returnLegAltitude(true, true, 45.f, 22.f, 44.f, 30.f, lowered), 22.f);
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(false, false, 22.f, 22.f, 26.f, 30.f, lowered)));
+	// and the ring ends the restore: leaving the ring later writes nothing
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(false, true, 22.f, 22.f, 26.f, 30.f, lowered)));
+	// a Return that never saw the flag keeps its setpoint
+	bool never = false;
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(false, true, 60.f, 22.f, 60.f, 30.f, never)));
+	// a flag set on the orbit at its height lowers nothing, so its clear restores nothing
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(true, false, 22.f, 22.f, 21.f, 30.f, never)));
+	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(false, true, 22.f, 22.f, 21.f, 30.f, never)));
+}
+
 } // namespace

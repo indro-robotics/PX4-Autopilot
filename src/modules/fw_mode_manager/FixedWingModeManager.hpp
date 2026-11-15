@@ -47,6 +47,7 @@
 #include "ControllerConfigurationHandler.hpp"
 
 #include <float.h>
+#include <commander/failure_detector/ThrustLoss.hpp>
 #include <drivers/drv_hrt.h>
 #include <lib/geo/geo.h>
 #include <lib/atmosphere/atmosphere.h>
@@ -105,11 +106,12 @@
 #include <uORB/topics/figure_eight_status.h>
 #endif // CONFIG_FIGURE_OF_EIGHT
 
+#include <uORB/topics/home_position.h>
+
 #ifdef CONFIG_FW_SOARING
 #include <lib/soaring/Soaring.hpp>
 #include <uORB/topics/debug_key_value.h>
 #include <uORB/topics/failsafe_flags.h>
-#include <uORB/topics/home_position.h>
 #include <uORB/topics/soaring_status.h>
 #include <uORB/topics/tecs_status.h>
 #endif // CONFIG_FW_SOARING
@@ -325,6 +327,7 @@ private:
 
 	// set once above FW_TKO_PMIN_ALT, so a motor that stops later is not pitched up again on the way down
 	bool _takeoff_floor_released{false};
+	bool _takeoff_underspeed{false};
 
 	uORB::Subscription _launch_attitude_sub{ORB_ID(vehicle_attitude)};
 	uORB::Subscription _launch_gps_sub{ORB_ID(vehicle_gps_position)};
@@ -404,6 +407,7 @@ private:
 
 	// [us] last time airspeed was received. used to detect timeouts.
 	hrt_abstime _time_airspeed_last_valid{0};
+	hrt_abstime _time_airspeed_eas{0};
 
 	// WIND
 
@@ -455,6 +459,7 @@ private:
 	bool _tf_announced{false};
 	bool _tf_limited{false};
 	uint8_t _tf_state{TerrainFollower::OFF};
+	uint8_t _tf_z_reset_counter{0};
 	uint16_t _tf_loss_count{0};
 	hrt_abstime _tf_status_time{0};
 	hrt_abstime _tf_wait_due{0};
@@ -480,8 +485,10 @@ private:
 	void publishFigureEightStatus(const position_setpoint_s pos_sp);
 #endif // CONFIG_FIGURE_OF_EIGHT
 
-#ifdef CONFIG_FW_SOARING
 	uORB::Subscription _home_position_sub{ORB_ID(home_position)};
+	home_position_s _home{};
+
+#ifdef CONFIG_FW_SOARING
 	uORB::Subscription _failsafe_flags_sub{ORB_ID(failsafe_flags)};
 	uORB::Publication<soaring_status_s> _soaring_status_pub{ORB_ID(soaring_status)};
 	uORB::Publication<debug_key_value_s> _debug_key_value_pub{ORB_ID(debug_key_value)};
@@ -489,7 +496,6 @@ private:
 	soaring::Soaring _soaring;
 	soaring::Params _soar_p{};
 	soaring::Output _soar_out{};
-	home_position_s _home{};
 	uint8_t _battery_warning{0};
 	float _airspeed_tas{NAN};
 	hrt_abstime _time_soar_airspeed{0};
@@ -995,7 +1001,8 @@ private:
 		(ParamFloat<px4::params::FW_TF_BANK>) _param_fw_tf_bank,
 		(ParamFloat<px4::params::FW_TF_LOSS_UP>) _param_fw_tf_loss_up,
 		(ParamFloat<px4::params::FW_TF_TTG>) _param_fw_tf_ttg,
-		(ParamFloat<px4::params::FW_TF_MAXDN>) _param_fw_tf_maxdn
+		(ParamFloat<px4::params::FW_TF_MAXDN>) _param_fw_tf_maxdn,
+		(ParamFloat<px4::params::GF_MAX_VER_DIST>) _param_gf_max_ver_dist
 	)
 };
 

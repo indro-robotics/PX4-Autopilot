@@ -45,6 +45,7 @@
  */
 
 #include "navigator.h"
+#include "landing_pattern.h"
 
 #include <float.h>
 #include <sys/stat.h>
@@ -271,7 +272,8 @@ void Navigator::run()
 				// A pattern written from a moving vehicle sits around an airborne home.
 				const bool ready = (_home_pos.timestamp >= _vstatus.armed_time || _home_pos.manual_home)
 						   && home_global_position_valid() && PX4_ISFINITE(_local_pos.heading) && _local_pos.v_xy_valid
-						   && _local_pos.vx * _local_pos.vx + _local_pos.vy * _local_pos.vy < 3.f * 3.f;
+						   && _local_pos.vx * _local_pos.vx + _local_pos.vy * _local_pos.vy < 3.f * 3.f
+						   && landingPatternInRange(_param_mis_lp_dist.get(), _param_mis_lp_alt.get(), _param_mis_lp_offset.get());
 				landingPatternWrite(_local_pos.heading, ready);
 			}
 		}

@@ -406,6 +406,7 @@ private:
 	uORB::SubscriptionMultiArray<distance_sensor_s> _distance_sensor_subs{ORB_ID::distance_sensor};
 	hrt_abstime _last_range_sensor_update{0};
 	float _range_long_floor{0.f};
+	range_select::StuckCheck _range_stuck[decltype(_distance_sensor_subs)::size()] {};
 #endif // CONFIG_EKF2_RANGE_FINDER
 
 	bool _callback_registered{false};

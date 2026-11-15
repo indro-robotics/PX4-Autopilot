@@ -301,7 +301,8 @@ PARAM_DEFINE_INT32(FW_LND_EARLYCFG, 0);
 /**
  * Flare, minimum pitch
  *
- * Minimum pitch during landing flare.
+ * Minimum pitch during landing flare. Also the pitch floor after a thrust loss (FD_FW_TL_TIME) in Takeoff and, with a
+ * valid range to the ground, below twice FW_LND_FLALT outside a landing, and the Takeoff floor above FW_TKO_PMIN_ALT.
  *
  * @unit deg
  * @min -5
@@ -315,7 +316,8 @@ PARAM_DEFINE_FLOAT(FW_LND_FL_PMIN, 2.5f);
 /**
  * Flare, maximum pitch
  *
- * Maximum pitch during landing flare.
+ * Maximum pitch during landing flare. Also both pitch limits of the glide after an aborted launch (FW_LAUN_SPD_MIN)
+ * in every auto mode.
  *
  * @unit deg
  * @min 0
@@ -505,7 +507,8 @@ PARAM_DEFINE_FLOAT(FW_LND_TD_TIME, -1.0f);
 /**
  * Landing flare sink rate
  *
- * TECS will attempt to control the aircraft to this sink rate via pitch angle (throttle killed during flare)
+ * TECS will attempt to control the aircraft to this sink rate via pitch angle (throttle killed during flare).
+ * With FW_LND_FL_KP above 0 the flare law flies it.
  *
  * @unit m/s
  * @min 0.0
@@ -524,7 +527,6 @@ PARAM_DEFINE_FLOAT(FW_LND_FL_SINK, 0.25f);
  *
  * Set to 0 to leave the flare pitch to TECS.
  *
- * @unit deg
  * @min 0.0
  * @max 20.0
  * @decimal 1
@@ -538,7 +540,6 @@ PARAM_DEFINE_FLOAT(FW_LND_FL_KP, 0.0f);
  *
  * Flare pitch rate per m/s of height rate error, in deg/s per m/s. Acts only with FW_LND_FL_KP above 0.
  *
- * @unit deg/s
  * @min 0.0
  * @max 10.0
  * @decimal 1
@@ -702,9 +703,11 @@ PARAM_DEFINE_FLOAT(FW_SPOILERS_LND, 0.f);
 /**
  * Thrust loss wings-level height
  *
- * Height above ground below which an auto mode flies wings level once the thrust loss check (FD_FW_TL_TIME) has set
- * the motor failure flag, raised by the distance to the active position setpoint, for an orbit to its circle, over
- * FW_TL_GLIDE; a straight landing is exempt. Below this height the flag holds until landed.
+ * Height below which an auto mode flies wings level once the thrust loss check (FD_FW_TL_TIME) has set the motor
+ * failure flag. The distance to the active position setpoint, for an orbit or a circular landing to its circle, over
+ * FW_TL_GLIDE raises it; a straight landing is exempt. Below FW_TL_LVL_ALT itself, not the raised height, the flag holds
+ * until landed.
+ * The height is the range to the ground, and the height above the estimator origin without a valid range.
  *
  * @unit m
  * @min 0.0
@@ -718,8 +721,12 @@ PARAM_DEFINE_FLOAT(FW_TL_LVL_ALT, 20.f);
 /**
  * Thrust loss glide ratio
  *
- * Horizontal distance per metre of height that a thrust loss glide is assumed to reach. Once the motor
- * failure flag is set, the wings-level height rises by the distance to the active position setpoint over this ratio.
+ * Horizontal distance per metre of height that a thrust loss glide is assumed to reach in still air. Once the motor
+ * failure flag is set, the wings-level height (FW_TL_LVL_ALT) rises by the distance to the active position setpoint
+ * over this ratio, and an orbit ahead of a landing item ends once the height above the touchdown point is at most the
+ * distance to it over this ratio plus 10 m. Wind scales the ratio by ground speed over airspeed, held to 0.5 to 1.2:
+ * along the course to the setpoint for the wings-level height, along the landing course for the orbit. With the flag
+ * set an auto mode banks at most 30 deg.
  *
  * @min 1.0
  * @max 30.0
@@ -733,6 +740,7 @@ PARAM_DEFINE_FLOAT(FW_TL_GLIDE, 8.f);
  * Terrain follow enable
  *
  * Follow bits act only when set in flight; a bit stored at boot waits until it is cleared and set again.
+ * Follow and guard need EKF2_RNG_CTRL above 0.
  *
  * @min 0
  * @max 7
@@ -746,8 +754,12 @@ PARAM_DEFINE_INT32(FW_TF_EN, 0);
 /**
  * Terrain follow height above ground
  *
+ * Flown between FW_TF_FLOOR + max(FW_TF_SINK x FW_TF_TTG + 1, 7) and 0.75 x the sensor range x cos(FW_TF_BANK),
+ * 30.7 m with 50 m lidars. A Hold above 40 m does not follow. The steepest slope held is FW_T_CLMB_MAX over the
+ * ground speed: 16.7 percent at 18 m/s with FW_T_CLMB_MAX 3.
+ *
  * @unit m
- * @min 10
+ * @min 15
  * @max 100
  * @decimal 1
  * @increment 1
@@ -757,6 +769,8 @@ PARAM_DEFINE_FLOAT(FW_TF_HAGL, 25.f);
 
 /**
  * Terrain follow floor
+ *
+ * Height above ground under which the pull-up starts; the guard lifts under 1.5 times it.
  *
  * @unit m
  * @min 3
@@ -770,6 +784,8 @@ PARAM_DEFINE_FLOAT(FW_TF_FLOOR, 8.f);
 /**
  * Terrain follow height error time constant
  *
+ * Time constant of the height error in follow and guard uplift.
+ *
  * @unit s
  * @min 1
  * @max 10
@@ -781,6 +797,8 @@ PARAM_DEFINE_FLOAT(FW_TF_TC, 4.f);
 
 /**
  * Terrain follow maximum descent rate
+ *
+ * Descent rate limit in follow and guard uplift.
  *
  * @unit m/s
  * @min 0.5
@@ -794,6 +812,8 @@ PARAM_DEFINE_FLOAT(FW_TF_SINK, 2.f);
 /**
  * Terrain follow bank limit
  *
+ * Bank limit while the follower holds the altitude.
+ *
  * @unit deg
  * @min 20
  * @max 40
@@ -805,6 +825,8 @@ PARAM_DEFINE_FLOAT(FW_TF_BANK, 35.f);
 
 /**
  * Terrain follow climb on range loss
+ *
+ * Climb above the altitude where the range was lost, held until the range returns.
  *
  * @unit m
  * @min 0
@@ -818,6 +840,8 @@ PARAM_DEFINE_FLOAT(FW_TF_LOSS_UP, 10.f);
 /**
  * Terrain follow time to floor that starts the pull-up, 0 disables
  *
+ * The pull-up starts once the closing rate on the ground times this time exceeds the height above FW_TF_FLOOR.
+ *
  * @unit s
  * @min 0
  * @max 10
@@ -829,6 +853,8 @@ PARAM_DEFINE_FLOAT(FW_TF_TTG, 3.f);
 
 /**
  * Terrain follow descent limit under the planned altitude
+ *
+ * Follow flies at most this far under the planned altitude.
  *
  * @unit m
  * @min 0
