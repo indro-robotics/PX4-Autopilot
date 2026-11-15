@@ -67,6 +67,17 @@ namespace navigator
 Navigator *g_navigator;
 }
 
+static void landingPatternDisarm(Navigator &nav)
+{
+	// Airborne, the commander refuses an unforced disarm and prints a denial.
+	if (nav.get_land_detected()->landed) {
+		vehicle_command_s cmd{};
+		cmd.command = vehicle_command_s::VEHICLE_CMD_COMPONENT_ARM_DISARM;
+		cmd.param1 = vehicle_command_s::ARMING_ACTION_DISARM;
+		nav.publish_vehicle_command(cmd);
+	}
+}
+
 Navigator::Navigator() :
 	ModuleParams(nullptr),
 	_loop_perf(perf_alloc(PC_ELAPSED, "navigator")),
@@ -962,6 +973,7 @@ void Navigator::run()
 		if (_lp_mission_id != 0 && _mission_result.mission_id == _lp_mission_id) {
 			if (!_mission_result.valid) {
 				mavlink_log_critical(&_mavlink_log_pub, "Landing pattern failed mission check");
+				landingPatternDisarm(*this);
 			}
 
 			_lp_mission_id = 0;
@@ -1656,6 +1668,7 @@ void Navigator::landingPatternWrite(float heading, bool ready)
 
 	if (id == Mission::LANDING_PATTERN_FAILED) {
 		mavlink_log_critical(&_mavlink_log_pub, "Landing pattern not written");
+		landingPatternDisarm(*this);
 
 	} else if (id != 0) {
 		_lp_mission_id = id;
