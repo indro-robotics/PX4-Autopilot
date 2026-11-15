@@ -1167,7 +1167,10 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 				// 3D: on the rail the horizontal speed reads cos(rail angle) low
 				const float launch_speed = (_local_pos.v_xy_valid && _local_pos.v_z_valid) ?
 							   Vector3f(_local_pos.vx, _local_pos.vy, _local_pos.vz).norm() : NAN;
-				_launchDetector.update(control_interval, _body_acceleration_x, launch_speed);
+				vehicle_attitude_s attitude{};
+				_launch_attitude_sub.copy(&attitude);
+				const Eulerf euler{Quatf{attitude.q}};
+				_launchDetector.update(control_interval, _body_acceleration_x, launch_speed, euler.phi(), euler.theta());
 			}
 
 		} else	{
@@ -1175,11 +1178,28 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 			_launchDetector.forceSetFlyState();
 		}
 
-		if (!_launch_detected && _launchDetector.getLaunchDetected() > launch_detection_status_s::STATE_WAITING_FOR_LAUNCH) {
+		if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_WAITING_FOR_LAUNCH) {
+			// a knock re-armed the wait: yaw and position are taken at the next detection
+			_launch_detected = false;
+
+		} else if (!_launch_detected) {
 			_launch_detected = true;
 			_takeoff_init_position = global_position;
 			_takeoff_ground_alt = _current_altitude;
 			_launch_current_yaw = _yaw;
+			_launch_course.reset();
+		}
+
+		sensor_gps_s gps;
+
+		if (_launch_detected && _launch_gps_sub.copy(&gps)) {
+			const float course = _launch_course.update(gps, now, _param_fw_laun_crs_dst.get());
+
+			if (PX4_ISFINITE(course)) {
+				_launch_current_yaw = course;
+				events::send<float>(events::ID("fixedwing_position_control_launch_course"), events::Log::Info,
+						    "Launch course {1:.1} deg from the GNSS track", math::degrees(matrix::wrap_2pi(course)));
+			}
 		}
 
 		const Vector2f launch_local_position = _global_local_proj_ref.project(_takeoff_init_position(0),
@@ -1232,10 +1252,18 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 
 			_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-			_ctrl_configuration_handler.setPitchMin(radians(_takeoff_pitch_min.get()));
+			_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
+						  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
+			_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
+								_takeoff_pitch_min.get()));
 			_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 			_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
 			_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
+
+			if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_FLYING
+			    && _param_fw_tko_spdwt.get() >= 0.f) {
+				_ctrl_configuration_handler.setSpeedWeight(_param_fw_tko_spdwt.get());
+			}
 
 			//float yaw_body = _yaw; // yaw is not controlled, so set setpoint to current yaw
 
@@ -1257,7 +1285,7 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 
 		launch_detection_status_s launch_detection_status;
 		launch_detection_status.timestamp = now;
-		launch_detection_status.launch_detection_state = _launchDetector.getLaunchDetected();
+		launch_detection_status.launch_detection_state = _launchDetector.getPublishedState();
 		_launch_detection_status_pub.publish(launch_detection_status);
 	}
 
@@ -1341,7 +1369,10 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 			if (_control_mode.flag_armed) {
 				/* Detect launch using body X (forward) acceleration */
-				_launchDetector.update(control_interval, _body_acceleration_x, NAN);
+				vehicle_attitude_s attitude{};
+				_launch_attitude_sub.copy(&attitude);
+				const Eulerf euler{Quatf{attitude.q}};
+				_launchDetector.update(control_interval, _body_acceleration_x, NAN, euler.phi(), euler.theta());
 			}
 
 		} else	{
@@ -1349,7 +1380,10 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 			_launchDetector.forceSetFlyState();
 		}
 
-		if (!_launch_detected && _launchDetector.getLaunchDetected() > launch_detection_status_s::STATE_WAITING_FOR_LAUNCH) {
+		if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_WAITING_FOR_LAUNCH) {
+			_launch_detected = false;
+
+		} else if (!_launch_detected) {
 			_launch_detected = true;
 			_takeoff_ground_alt = _current_altitude;
 		}
@@ -1375,14 +1409,22 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 		_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-		_ctrl_configuration_handler.setPitchMin(radians(_takeoff_pitch_min.get()));
+		_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
+					  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
+		_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
+							_takeoff_pitch_min.get()));
 		_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 		_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
 		_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
 
+		if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_FLYING
+		    && _param_fw_tko_spdwt.get() >= 0.f) {
+			_ctrl_configuration_handler.setSpeedWeight(_param_fw_tko_spdwt.get());
+		}
+
 		launch_detection_status_s launch_detection_status;
 		launch_detection_status.timestamp = now;
-		launch_detection_status.launch_detection_state = _launchDetector.getLaunchDetected();
+		launch_detection_status.launch_detection_state = _launchDetector.getPublishedState();
 		_launch_detection_status_pub.publish(launch_detection_status);
 	}
 
@@ -2237,6 +2279,12 @@ FixedWingModeManager::Run()
 			}
 		}
 
+		_launch_aborted = _control_mode.flag_armed && (_launch_aborted || _launchDetector.aborted());
+
+		if (_launch_aborted) {
+			_ctrl_configuration_handler.setThrottleMax(_param_fw_thr_idle.get());
+		}
+
 		if (_control_mode_current != FW_POSCTRL_MODE_OTHER) {
 			_ctrl_configuration_handler.update(now);
 		}
@@ -2286,6 +2334,8 @@ FixedWingModeManager::reset_takeoff_state()
 	_launchDetector.reset();
 
 	_launch_detected = false;
+
+	_takeoff_floor_released = false;
 
 	_takeoff_ground_alt = _current_altitude;
 }

@@ -83,7 +83,7 @@ PARAM_DEFINE_FLOAT(FW_LAUN_MOT_DEL, 0.0f);
 /**
  * Minimum launch speed
  *
- * The motor starts after FW_LAUN_MOT_DEL only when the inertial speed since the launch detection reached this value. A launch whose acceleration ends below it keeps the throttle at FW_THR_IDLE, levels the wings and holds FW_LND_FL_PMAX pitch until disarm; one under 2 m/s re-arms the launch detection. 0 disables the check. Needs FW_LAUN_MOT_DEL above 0.
+ * The motor starts after FW_LAUN_MOT_DEL only when the inertial speed since the launch detection reached this value. A launch whose acceleration ends below it, or that leaves the rail rolled past 30 deg or pitched outside -30 to 45 deg, keeps the throttle at FW_THR_IDLE in every mode until disarm, and in Takeoff levels the wings and holds FW_LND_FL_PMAX pitch; one under 2 m/s re-arms the launch detection and does not count as a takeoff. The speed is inertial: a headwind lowers it below the airspeed and a tailwind raises it. The estimate at the rail lip reads up to 0.7 m/s off the true speed. 0 disables the check. Needs FW_LAUN_MOT_DEL above 0.
  *
  * @unit m/s
  * @min 0.0
@@ -93,3 +93,44 @@ PARAM_DEFINE_FLOAT(FW_LAUN_MOT_DEL, 0.0f);
  * @group FW Auto Takeoff
  */
 PARAM_DEFINE_FLOAT(FW_LAUN_SPD_MIN, 0.0f);
+
+/**
+ * Launch course distance
+ *
+ * GNSS ground distance from the launch detection after which the Takeoff course is the GNSS track over that distance, set once per launch, in place of the heading at detection. A takeoff waypoint over 10 m away still sets the course. 0 keeps the heading at detection.
+ *
+ * @unit m
+ * @min 0.0
+ * @max 100.0
+ * @decimal 0
+ * @increment 1.0
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_LAUN_CRS_DST, 0.0f);
+
+/**
+ * Takeoff speed weight
+ *
+ * TECS speed weight in Takeoff once the launch detection starts the motor. 2 holds FW_TKO_AIRSPD with pitch alone, so a motor that stops in the climb leaves the aircraft gliding at takeoff airspeed. -1 uses FW_T_SPDWEIGHT.
+ *
+ * @min -1.0
+ * @max 2.0
+ * @decimal 1
+ * @increment 0.1
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_TKO_SPDWT, -1.0f);
+
+/**
+ * Takeoff pitch floor height
+ *
+ * Height above the launch point from which the Takeoff pitch floor is FW_LND_FL_PMIN instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. 0 keeps FW_TKO_PITCH_MIN for the whole Takeoff.
+ *
+ * @unit m
+ * @min 0.0
+ * @max 100.0
+ * @decimal 1
+ * @increment 1.0
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_TKO_PMIN_ALT, 0.0f);

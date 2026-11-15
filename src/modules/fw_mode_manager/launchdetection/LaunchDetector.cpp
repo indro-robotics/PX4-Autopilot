@@ -45,7 +45,7 @@
 namespace launchdetection
 {
 
-void LaunchDetector::update(const float dt, const float accel_x, const float speed)
+void LaunchDetector::update(const float dt, const float accel_x, const float speed, const float roll, const float pitch)
 {
 	switch (state_) {
 	case launch_detection_status_s::STATE_WAITING_FOR_LAUNCH:
@@ -96,8 +96,19 @@ void LaunchDetector::update(const float dt, const float accel_x, const float spe
 
 		if (motor_delay_counter_ > param_fw_laun_mot_del_.get()) {
 			const float speed_min = param_fw_laun_spd_min_.get();
+			const bool fast = speed_min <= 0.f || !PX4_ISFINITE(speed) || speed_max_ >= speed_min;
 
-			if (speed_min <= 0.f || !PX4_ISFINITE(speed) || speed_max_ >= speed_min) {
+			// a shot can still be on the rail at FW_LAUN_MOT_DEL: a slow one is judged on the speed it leaves with
+			if (!fast && accel_x > 0.f) {
+				break;
+			}
+
+			if (speed_min > 0.f && (fabsf(roll) > kRollMax || pitch < kPitchMin || pitch > kPitchMax)) {
+				events::send(events::ID("launch_detection_attitude"), {events::Log::Critical, events::LogInternal::Critical},
+					     "Launch attitude out of range, motor held");
+				aborted_ = true;
+
+			} else if (fast) {
 				events::send(events::ID("launch_detection_enable_motors"), {events::Log::Info, events::LogInternal::Info},
 					     "Launch detected: enable motors");
 				state_ = launch_detection_status_s::STATE_FLYING;
@@ -107,8 +118,7 @@ void LaunchDetector::update(const float dt, const float accel_x, const float spe
 					     "Launch detection reset");
 				reset();
 
-			} else if (accel_x <= 0.f) {
-				// a weak shot can still be on the rail at FW_LAUN_MOT_DEL: judge it on the speed it leaves with
+			} else {
 				events::send(events::ID("launch_detection_too_slow"), {events::Log::Critical, events::LogInternal::Critical},
 					     "Launch too slow, motor held");
 				aborted_ = true;
@@ -126,6 +136,16 @@ void LaunchDetector::update(const float dt, const float accel_x, const float spe
 
 uint LaunchDetector::getLaunchDetected() const
 {
+	return state_;
+}
+
+uint LaunchDetector::getPublishedState() const
+{
+	if (state_ == launch_detection_status_s::STATE_LAUNCH_DETECTED_DISABLED_MOTOR && param_fw_laun_spd_min_.get() > 0.f
+	    && speed_max_ < kKnockSpeed) {
+		return launch_detection_status_s::STATE_WAITING_FOR_LAUNCH;
+	}
+
 	return state_;
 }
 

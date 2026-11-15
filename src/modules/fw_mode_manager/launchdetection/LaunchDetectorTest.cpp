@@ -43,6 +43,7 @@ using Status = launch_detection_status_s;
 static constexpr float kDt = 0.01f;
 static constexpr float kShotAccel = 30.f;
 static constexpr float kGate = 10.5f;
+static constexpr float kKnock = 2.f;
 
 class LaunchDetectorTest : public ::testing::Test
 {
@@ -61,21 +62,24 @@ public:
 		param_set(param_find(name), &value);
 	}
 
-	static void run(LaunchDetector &detector, float seconds, float accel_x, float speed)
+	static void run(LaunchDetector &detector, float seconds, float accel_x, float speed, float roll = 0.f,
+			float pitch = 0.f)
 	{
 		for (float t = 0.f; t < seconds; t += kDt) {
-			detector.update(kDt, accel_x, speed);
+			detector.update(kDt, accel_x, speed, roll, pitch);
 		}
 	}
 
-	// A catapult stroke long enough to pass FW_LAUN_AC_T, then the motor delay at the given speed.
-	static uint shot(LaunchDetector &detector, float speed)
+	// A catapult stroke long enough to pass FW_LAUN_AC_T, then the motor delay at the given speed and attitude.
+	static uint shot(LaunchDetector &detector, float speed, float roll = 0.f, float pitch = 0.f)
 	{
 		run(detector, 0.15f, kShotAccel, 0.f);
 		EXPECT_EQ(detector.getLaunchDetected(), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
-		run(detector, 0.5f, 0.f, speed);
+		run(detector, 0.5f, 0.f, speed, roll, pitch);
 		return detector.getLaunchDetected();
 	}
+
+	static float deg(float d) { return d * static_cast<float>(M_PI) / 180.f; }
 };
 
 TEST_F(LaunchDetectorTest, GateOffIsStock)
@@ -182,4 +186,83 @@ TEST_F(LaunchDetectorTest, ResetClearsAbort)
 	EXPECT_EQ(detector.getLaunchDetected(), Status::STATE_WAITING_FOR_LAUNCH);
 	EXPECT_FALSE(detector.aborted());
 	EXPECT_EQ(shot(detector, kGate + 0.5f), Status::STATE_FLYING);
+}
+
+TEST_F(LaunchDetectorTest, StrokeUnderKnockSpeedStillAcceleratingWaits)
+{
+	// A real stroke can read under 2 m/s at FW_LAUN_MOT_DEL; only the end of the acceleration may reset it.
+	LaunchDetector detector{nullptr};
+	run(detector, 0.15f, kShotAccel, 0.f);
+	run(detector, 0.5f, 20.f, 1.f);
+	EXPECT_EQ(detector.getLaunchDetected(), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
+	EXPECT_FALSE(detector.aborted());
+
+	run(detector, 0.05f, 20.f, kGate + 0.5f);
+	EXPECT_EQ(detector.getLaunchDetected(), Status::STATE_FLYING);
+}
+
+TEST_F(LaunchDetectorTest, KnockResetsWhenTheAccelerationEnds)
+{
+	LaunchDetector detector{nullptr};
+	EXPECT_EQ(shot(detector, 1.f), Status::STATE_WAITING_FOR_LAUNCH);
+	EXPECT_FALSE(detector.aborted());
+}
+
+TEST_F(LaunchDetectorTest, RolledShotAbortsAndNeverFlies)
+{
+	for (const float roll : {deg(35.f), deg(-35.f)}) {
+		LaunchDetector detector{nullptr};
+		EXPECT_EQ(shot(detector, kGate + 0.5f, roll), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
+		EXPECT_TRUE(detector.aborted());
+
+		run(detector, 5.f, 0.f, 2.f * kGate);
+		EXPECT_EQ(detector.getLaunchDetected(), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
+	}
+}
+
+TEST_F(LaunchDetectorTest, RollInsideTheLimitFlies)
+{
+	for (const float roll : {deg(25.f), deg(-25.f)}) {
+		LaunchDetector detector{nullptr};
+		EXPECT_EQ(shot(detector, kGate + 0.5f, roll), Status::STATE_FLYING);
+		EXPECT_FALSE(detector.aborted());
+	}
+}
+
+TEST_F(LaunchDetectorTest, PitchOutsideTheLimitAborts)
+{
+	for (const float pitch : {deg(50.f), deg(-35.f)}) {
+		LaunchDetector detector{nullptr};
+		shot(detector, kGate + 0.5f, 0.f, pitch);
+		EXPECT_TRUE(detector.aborted());
+	}
+
+	for (const float pitch : {deg(40.f), deg(-25.f)}) {
+		LaunchDetector detector{nullptr};
+		EXPECT_EQ(shot(detector, kGate + 0.5f, 0.f, pitch), Status::STATE_FLYING);
+	}
+}
+
+TEST_F(LaunchDetectorTest, AttitudeIgnoredWithGateOff)
+{
+	set("FW_LAUN_SPD_MIN", 0.f);
+	LaunchDetector detector{nullptr};
+	EXPECT_EQ(shot(detector, 0.f, deg(35.f), deg(50.f)), Status::STATE_FLYING);
+	EXPECT_FALSE(detector.aborted());
+}
+
+TEST_F(LaunchDetectorTest, PublishedWaitingUntilKnockSpeed)
+{
+	LaunchDetector detector{nullptr};
+	run(detector, 0.15f, kShotAccel, 0.f);
+	EXPECT_EQ(detector.getPublishedState(), Status::STATE_WAITING_FOR_LAUNCH);
+	run(detector, 0.05f, kShotAccel, kKnock - 0.1f);
+	EXPECT_EQ(detector.getPublishedState(), Status::STATE_WAITING_FOR_LAUNCH);
+	run(detector, 0.05f, kShotAccel, kKnock + 0.1f);
+	EXPECT_EQ(detector.getPublishedState(), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
+
+	set("FW_LAUN_SPD_MIN", 0.f);
+	LaunchDetector stock{nullptr};
+	run(stock, 0.15f, kShotAccel, 0.f);
+	EXPECT_EQ(stock.getPublishedState(), Status::STATE_LAUNCH_DETECTED_DISABLED_MOTOR);
 }
