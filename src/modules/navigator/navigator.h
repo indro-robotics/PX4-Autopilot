@@ -293,6 +293,7 @@ public:
 	float get_nav_min_gnd_dist_param() const { return _param_nav_min_gnd_dist.get(); }
 
 	float get_vtol_back_trans_deceleration() const { return _param_back_trans_dec_mss; }
+	float get_thrust_loss_glide() const { return _param_fw_tl_glide; }
 
 	bool force_vtol();
 
@@ -416,11 +417,13 @@ private:
 	param_t _handle_mpc_jerk_auto{PARAM_INVALID};
 	param_t _handle_mpc_acc_hor{PARAM_INVALID};
 	param_t _handle_fw_tf_bank{PARAM_INVALID};
+	param_t _handle_fw_tl_glide{PARAM_INVALID};
 
 	float _param_back_trans_dec_mss{0.f};
 	float _param_mpc_jerk_auto{4.f}; 	/**< initialized with the default jerk auto value to prevent division by 0 if the parameter is accidentally set to 0 */
 	float _param_mpc_acc_hor{3.f};		/**< initialized with the default horizontal acc value to prevent division by 0 if the parameter is accidentally set to 0 */
 	float _param_fw_tf_bank{35.f};
+	float _param_fw_tl_glide{8.f};
 
 	float _cruising_speed_current_mode{-1.0f};
 	float _mission_throttle{NAN};

@@ -85,6 +85,12 @@ public:
 
 	bool lost() const { return _lost; }
 
+	// an orbit left above the height its final needs lands long: the distance to the touchdown point over the glide ratio, plus 10 m
+	static bool orbitEnds(bool touchdown_next, float height, float distance, float glide)
+	{
+		return !touchdown_next || !(height > distance / (glide > 1.f ? glide : 1.f) + 10.f);
+	}
+
 private:
 	uint64_t _t_prev{0};
 	uint64_t _t_change{0};

@@ -235,4 +235,37 @@ TEST_F(FailureDetectorThrustTest, SampleOlderThanTheLastIsDropped)
 	EXPECT_TRUE(_tl.lost());
 }
 
+TEST(ThrustLossOrbit, ContinuesAboveTheGlideToTheTouchdownPlusTenMetres)
+{
+	// FW_TL_GLIDE 8 and 254 m of final: 254 / 8 + 10 = 41.75 m above the touchdown point
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 52.f, 254.f, 8.f));
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 41.85f, 254.f, 8.f));
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 41.65f, 254.f, 8.f));
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 30.f, 254.f, 8.f));
+	// the far side of a 60 m ring is 120 m further out and ends 120 / 8 = 15 m higher
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 56.85f, 374.f, 8.f));
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 56.65f, 374.f, 8.f));
+	// a glide ratio of 12 reaches the same 254 m from 254 / 12 + 10 = 31.17 m
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 31.3f, 254.f, 12.f));
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 31.f, 254.f, 12.f));
+}
+
+TEST(ThrustLossOrbit, EndsAtTheRingWithoutATouchdownPointOrAHeight)
+{
+	// with no landing item after the orbit there is no final to save height for
+	EXPECT_TRUE(ThrustLoss::orbitEnds(false, 120.f, 254.f, 8.f));
+	// a height or a distance that does not read must not hold a glide on the circle
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, NAN, 254.f, 8.f));
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 120.f, NAN, 8.f));
+}
+
+TEST(ThrustLossOrbit, GlideRatioUnderOneCountsAsOne)
+{
+	// FW_TL_GLIDE 0 would hold the orbit to the ground: 100 / 1 + 10 = 110 m
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 109.f, 100.f, 0.f));
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 111.f, 100.f, 0.f));
+	EXPECT_TRUE(ThrustLoss::orbitEnds(true, 109.f, 100.f, 0.5f));
+	EXPECT_FALSE(ThrustLoss::orbitEnds(true, 111.f, 100.f, 0.5f));
+}
+
 } // namespace

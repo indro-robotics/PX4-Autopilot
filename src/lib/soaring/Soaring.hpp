@@ -171,6 +171,8 @@ struct Output {
 	float height_gained{0.f};	// [m] sum over thermals
 	float last_gain{0.f};		// [m] last thermal
 	float last_time{0.f};		// [s] last thermal
+	uint16_t cut_count{0};		// motor cuts: entries to GLIDE from powered flight
+	float cut_pitch_step{0.f};	// [rad] path angle change of the last motor cut, nose down negative
 };
 
 class Soaring
@@ -204,6 +206,8 @@ private:
 	uint8_t _latch{REASON_NONE};
 	bool _speed_hold{false};
 	float _climb_sp{0.f};
+	uint16_t _cut_count{0};
+	float _cut_pitch_step{0.f};
 
 	float _climb_f{0.f};
 	float _tas_prev{0.f};

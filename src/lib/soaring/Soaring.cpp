@@ -435,6 +435,13 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 		_climb_sp = fminf(fmaxf(p.alt_cut + 5.f, in.height), alt_max);
 	}
 
+	// the path angle change to the glide is the pitch change a cut needs: TECS alone takes 30 s to find it
+	if (_state == State::GLIDE && prev != State::GLIDE && prev != State::THERMAL) {
+		_cut_count++;
+		_cut_pitch_step = clampf(-_climb_f / fmaxf(tas, 5.f) - sink(p, cruise_cas, ratio, 0.f) / fmaxf(cruise_cas * ratio, 5.f),
+					 -0.5f, 0.f);
+	}
+
 	const bool thermal = _state == State::THERMAL;
 	// held down to the ceiling less 20 m so the zoom on slowing (23 to 14 m/s returns 17 m) stays under it
 	_speed_hold = in.height > alt_max || (_speed_hold && in.height >= alt_max - 20.f);
@@ -481,6 +488,8 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 	out.height_gained = _height_gained;
 	out.last_gain = _last_gain;
 	out.last_time = _last_time;
+	out.cut_count = _cut_count;
+	out.cut_pitch_step = _cut_pitch_step;
 }
 
 } // namespace soaring

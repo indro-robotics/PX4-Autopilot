@@ -208,6 +208,16 @@ void FwLateralLongitudinalControl::Run()
 			const float airspeed_sp_eas = adapt_airspeed_setpoint(control_interval, _long_control_sp.equivalent_airspeed,
 						      _min_airspeed_from_guidance, _lateral_control_state.wind_speed.length());
 
+#ifdef CONFIG_FW_SOARING
+			soaring_status_s soar;
+
+			// at a motor cut the pitch integrator still holds the powered attitude
+			if (_soaring_status_sub.update(&soar) && soar.cut_count != _soar_cut_count) {
+				_soar_cut_count = soar.cut_count;
+				_tecs.step_pitch_integrator(soar.cut_pitch_step);
+			}
+
+#endif // CONFIG_FW_SOARING
 			// If the both altitude and height rate are set, set altitude setpoint to NAN
 			const float altitude_sp = PX4_ISFINITE(_long_control_sp.height_rate) ? NAN : _long_control_sp.altitude;
 

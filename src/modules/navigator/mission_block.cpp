@@ -46,6 +46,7 @@
 #include <math.h>
 #include <float.h>
 
+#include <commander/failure_detector/ThrustLoss.hpp>
 #include <lib/geo/geo.h>
 #include <systemlib/mavlink_log.h>
 #include <mathlib/mathlib.h>
@@ -265,12 +266,18 @@ MissionBlock::is_mission_item_reached_or_completed()
 					_navigator->set_position_setpoint_triplet_updated();
 				}
 
-			} else if (dist >= 0.f && dist_xy <= (_navigator->get_acceptance_radius() + mission_item_loiter_radius_abs)
-				   && (dist_z <= _navigator->get_altitude_acceptance_radius() || _navigator->thrust_lost())) {
+			} else if (dist >= 0.f && dist_xy <= (_navigator->get_acceptance_radius() + mission_item_loiter_radius_abs)) {
 				// loitering, check if new altitude is reached, while still also having check on position
-				// after a thrust loss the ring alone ends the orbit: the glide has no height for the circle
+				_waypoint_position_reached = dist_z <= _navigator->get_altitude_acceptance_radius();
 
-				_waypoint_position_reached = true;
+				// the glide after a thrust loss cannot hold the orbit height, and under the height of its final a circle lands short
+				if (_navigator->thrust_lost()) {
+					const position_setpoint_s &land = _navigator->get_position_setpoint_triplet()->next;
+					const vehicle_global_position_s &gpos = *_navigator->get_global_position();
+					_waypoint_position_reached = ThrustLoss::orbitEnds(land.valid
+								     && land.type == position_setpoint_s::SETPOINT_TYPE_LAND, gpos.alt - land.alt,
+								     get_distance_to_next_waypoint(gpos.lat, gpos.lon, land.lat, land.lon), _navigator->get_thrust_loss_glide());
+				}
 			}
 
 		} else if (_mission_item.nav_cmd == NAV_CMD_CONDITION_GATE) {

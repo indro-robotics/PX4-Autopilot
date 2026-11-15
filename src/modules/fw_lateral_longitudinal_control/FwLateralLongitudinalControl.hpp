@@ -71,6 +71,9 @@
 #include <uORB/topics/lateral_control_configuration.h>
 #include <uORB/topics/longitudinal_control_configuration.h>
 #include <uORB/topics/parameter_update.h>
+#ifdef CONFIG_FW_SOARING
+#include <uORB/topics/soaring_status.h>
+#endif // CONFIG_FW_SOARING
 #include <uORB/topics/tecs_status.h>
 #include <uORB/topics/vehicle_air_data.h>
 #include <uORB/topics/vehicle_attitude.h>
@@ -122,6 +125,11 @@ private:
 	uORB::Subscription _fw_longitudinal_ctrl_sub{ORB_ID(fixed_wing_longitudinal_setpoint)};
 	uORB::Subscription _long_control_configuration_sub{ORB_ID(longitudinal_control_configuration)};
 	uORB::Subscription _lateral_control_configuration_sub{ORB_ID(lateral_control_configuration)};
+
+#ifdef CONFIG_FW_SOARING
+	uORB::Subscription _soaring_status_sub {ORB_ID(soaring_status)};
+	uint16_t _soar_cut_count{0};
+#endif // CONFIG_FW_SOARING
 
 	vehicle_local_position_s _local_pos{};
 	fixed_wing_longitudinal_setpoint_s _long_control_sp{empty_longitudinal_control_setpoint};

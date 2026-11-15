@@ -216,6 +216,8 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 		status.aspd_excess = o.aspd_excess;
 		status.thermal_count = o.thermal_count;
 		status.height_gained = o.height_gained;
+		status.cut_count = o.cut_count;
+		status.cut_pitch_step = o.cut_pitch_step;
 		_soaring_status_pub.publish(status);
 	}
 

@@ -53,3 +53,5 @@ float32 dist_home # [m] horizontal distance from home
 float32 aspd_excess # [m/s] pitot TAS less the GPS estimate over the last full turn
 uint16 thermal_count # thermals entered
 float32 height_gained # [m] height gained over all thermals
+uint16 cut_count # motor cuts: entries to GLIDE from powered flight
+float32 cut_pitch_step # [rad] step of the TECS pitch integrator at the last motor cut: the path angle change to the glide

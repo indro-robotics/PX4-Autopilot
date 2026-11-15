@@ -116,6 +116,7 @@ Navigator::Navigator() :
 	_handle_mpc_jerk_auto = param_find("MPC_JERK_AUTO");
 	_handle_mpc_acc_hor = param_find("MPC_ACC_HOR");
 	_handle_fw_tf_bank = param_find("FW_TF_BANK");
+	_handle_fw_tl_glide = param_find("FW_TL_GLIDE");
 
 	_local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
 	_mission_sub = orb_subscribe(ORB_ID(mission));
@@ -155,6 +156,10 @@ void Navigator::params_update()
 
 	if (_handle_fw_tf_bank != PARAM_INVALID) {
 		param_get(_handle_fw_tf_bank, &_param_fw_tf_bank);
+	}
+
+	if (_handle_fw_tl_glide != PARAM_INVALID) {
+		param_get(_handle_fw_tl_glide, &_param_fw_tl_glide);
 	}
 
 	_mission.set_command_timeout(_param_mis_command_tout.get());

@@ -307,6 +307,8 @@ public:
 	 *
 	 */
 	void resetIntegrals();
+	// [rad] nose up positive: a known change of the trim attitude, such as the path angle change at a motor cut
+	void stepPitchIntegrator(float step) { _pitch_integ_state += step; }
 	/**
 	 * @brief Get the percent of the undersped.
 	 *
@@ -594,6 +596,8 @@ public:
 	{
 		_control.resetIntegrals();
 	}
+
+	void step_pitch_integrator(float step) { _control.stepPitchIntegrator(step); }
 
 	void set_detect_underspeed_enabled(bool enabled) { _control_flag.detect_underspeed_enabled = enabled; };
 

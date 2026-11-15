@@ -568,6 +568,100 @@ TEST(SoaringStates, ClimbFliesSpeedPriorityThroughoutAndTrimSpeedInTheLast50m)
 	EXPECT_FLOAT_EQ(capped.out.airspeed_sp, capped.p.airspd_max);
 }
 
+TEST(SoaringCut, StepsThePitchByThePathAngleChangeOncePerCut)
+{
+	Rig rig;
+	rig.in.height = 100.f;
+	rig.step(2.1f);
+	ASSERT_EQ(rig.out.state, State::CLIMB);
+	EXPECT_EQ(rig.out.cut_count, 0);
+	EXPECT_FLOAT_EQ(rig.out.cut_pitch_step, 0.f);
+	rig.speed = 18.f;
+
+	while (rig.out.state == State::CLIMB && rig.t < 120.f) {
+		ASSERT_EQ(rig.out.cut_count, 0) << rig.in.height;
+		rig.step(kDt);
+	}
+
+	// 3 m/s up at 18 m/s is 9.5 deg; the glide at FW_AIRSPD_MIN sinks 1.41 m/s at 14 m/s, 5.8 deg: 15.3 deg nose down
+	const float step = -(3.f / 18.f + 1.41f / 14.f);
+	ASSERT_EQ(rig.out.state, State::GLIDE);
+	EXPECT_EQ(rig.out.cut_count, 1);
+	EXPECT_NEAR(rig.out.cut_pitch_step, step, 0.003f);
+
+	// the glide and the restart at the floor are no cut: the count and the step hold until the motor stops again
+	rig.speed = 14.f;
+	rig.step(5.f);
+	EXPECT_EQ(holdHeight(rig, 99.f, 0.04f), State::CLIMB);
+	EXPECT_EQ(rig.out.cut_count, 1);
+	EXPECT_NEAR(rig.out.cut_pitch_step, step, 0.003f);
+
+	while (rig.out.state == State::CLIMB && rig.t < 240.f) {
+		rig.step(kDt);
+	}
+
+	// the second cut climbs 3 m/s at 14 m/s: 12.3 deg up
+	ASSERT_EQ(rig.out.state, State::GLIDE);
+	EXPECT_EQ(rig.out.cut_count, 2);
+	EXPECT_NEAR(rig.out.cut_pitch_step, -(3.f / 14.f + 1.41f / 14.f), 0.003f);
+}
+
+TEST(SoaringCut, FromLevelHoldStepsByTheGlideAngle)
+{
+	// air rising at the aircraft's own sink holds the stock Hold level: the cut then needs the 5.8 deg glide angle alone
+	Rig rig;
+	rig.p.enabled = false;
+	rig.w = tableSinkTurn(14.f, atanf(14.f * rig.rate / kG));
+	rig.step(5.f);
+	rig.p.enabled = true;
+	rig.in.height = 200.f;
+	rig.toGlide();
+	EXPECT_EQ(rig.out.cut_count, 1);
+	EXPECT_NEAR(rig.out.cut_pitch_step, -1.41f / 14.f, 0.003f);
+}
+
+TEST(SoaringCut, NeverStepsTheNoseUpNorPast29Deg)
+{
+	// a Hold sinking 4.6 m/s is steeper than the glide: the path change is 13 deg nose up, and a cut must not raise the nose
+	Rig sinking;
+	sinking.w = -3.f;
+	sinking.toGlide();
+	EXPECT_EQ(sinking.out.cut_count, 1);
+	EXPECT_FLOAT_EQ(sinking.out.cut_pitch_step, 0.f);
+
+	// 12 m/s up at 14 m/s reads 49 deg of climb, more than any motor climb: the step stops at 0.5 rad
+	Rig spike;
+	spike.climb_powered = 12.f;
+	spike.in.height = 100.f;
+	spike.step(2.1f);
+	ASSERT_EQ(spike.out.state, State::CLIMB);
+
+	while (spike.out.state == State::CLIMB && spike.t < 120.f) {
+		spike.step(kDt);
+	}
+
+	ASSERT_EQ(spike.out.state, State::GLIDE);
+	EXPECT_FLOAT_EQ(spike.out.cut_pitch_step, -0.5f);
+}
+
+TEST(SoaringCut, LeavingAThermalIsNoCut)
+{
+	// the motor is already off in THERMAL, and TECS has flown the glide attitude since the cut
+	Rig rig;
+	rig.toThermal();
+	ASSERT_EQ(rig.out.cut_count, 1);
+	const float step = rig.out.cut_pitch_step;
+	rig.w = 0.f;
+
+	while (rig.out.state == State::THERMAL && rig.t < 200.f) {
+		rig.step(kDt);
+	}
+
+	ASSERT_EQ(rig.out.state, State::GLIDE);
+	EXPECT_EQ(rig.out.cut_count, 1);
+	EXPECT_FLOAT_EQ(rig.out.cut_pitch_step, step);
+}
+
 TEST(SoaringStates, RadiusExitWhenCircleLeavesFence)
 {
 	Rig rig;
