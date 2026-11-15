@@ -40,7 +40,7 @@
 using SoarState = soaring::State;
 
 static_assert(soaring_status_s::STATE_THERMAL == (uint8_t)SoarState::THERMAL, "soaring state numbering");
-static_assert(soaring_status_s::REASON_CONFIG == soaring::REASON_CONFIG, "soaring reason numbering");
+static_assert(soaring_status_s::REASON_TERRAIN == soaring::REASON_TERRAIN, "soaring reason numbering");
 
 void
 FixedWingModeManager::soar_params_update()
@@ -102,12 +102,6 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 		_battery_warning = failsafe_flags.battery_warning;
 	}
 
-	tecs_status_s tecs_status;
-
-	if (_tecs_status_sub.update(&tecs_status)) {
-		_soar_throttle = tecs_status.throttle_sp;
-	}
-
 	const position_setpoint_s &cur = _pos_sp_triplet.current;
 	const bool hold = _vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_LOITER
 			  && _control_mode_current == FW_POSCTRL_MODE_AUTO
@@ -118,18 +112,27 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 	soaring::Input in;
 	in.time_us = now;
 
-	if (!hold) {
+	const bool motor_failed = _vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR;
+
+	if (motor_failed && _soar_out.state >= SoarState::CLIMB) {
+		// the failsafe changes the mode one vehicle_status sample after the flag, and one cycle may read both
+		in.inhibit_reason = soaring::REASON_MOTOR;
+
+	} else if (!hold) {
 		in.inhibit_reason = soaring::REASON_MODE;
 
-	} else if (_soar_act_fail_act != 3) {
-		// a failed motor restart needs the motor failure action Return
+	} else if (!soaring::Soaring::configOk(_soar_act_fail_act, _param_fd_fw_tl_time.get())) {
 		in.inhibit_reason = soaring::REASON_CONFIG;
 
 	} else if (_vehicle_status.failsafe) {
 		in.inhibit_reason = soaring::REASON_FAILSAFE;
 
-	} else if (_vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) {
+	} else if (motor_failed) {
 		in.inhibit_reason = soaring::REASON_MOTOR;
+
+	} else if (TerrainFollower::guardActs(_tf_state)) {
+		// the ground guard climbs on the motor that GLIDE and THERMAL hold off
+		in.inhibit_reason = soaring::REASON_TERRAIN;
 
 	} else if (_battery_warning >= battery_status_s::WARNING_LOW) {
 		in.inhibit_reason = soaring::REASON_BATTERY;
@@ -159,7 +162,6 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 	in.roll = _roll;
 	in.yaw = _yaw;
 	in.accel_x = _body_acceleration_x;
-	in.throttle = _soar_throttle;
 	in.wind_n = _wind_vel(0);
 	in.wind_e = _wind_vel(1);
 	in.wind_valid = _wind_valid;
@@ -234,8 +236,9 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 	const bool new_inhibit = o.state == SoarState::INHIBIT && (prev_state != SoarState::INHIBIT || prev_reason != o.reason);
 
 	if (new_inhibit && o.reason == soaring::REASON_CONFIG) {
-		events::send<int32_t>(events::ID("soaring_refused_config"), events::Log::Warning,
-				      "soaring refused - COM_ACT_FAIL_ACT {1}, expected 3", _soar_act_fail_act);
+		events::send<int32_t, float>(events::ID("soaring_refused_config"), events::Log::Warning,
+					     "soaring refused - COM_ACT_FAIL_ACT {1}, expected 3, FD_FW_TL_TIME {2:.1} s, expected above 0",
+					     _soar_act_fail_act, _param_fd_fw_tl_time.get());
 		return;
 	}
 
@@ -343,6 +346,11 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 			events::send(events::ID("soaring_off_wind"), events::Log::Warning, "soaring off  wind");
 			break;
 
+		case soaring::REASON_TERRAIN:
+			events::send(events::ID("soaring_off_terrain"), events::Log::Warning,
+				     "soaring off  terrain guard. SOAR_EN 0 then 1 restarts");
+			break;
+
 		default:
 			events::send(events::ID("soaring_off_disabled"), events::Log::Info, "soaring off  SOAR_EN 0");
 			break;
@@ -384,7 +392,7 @@ FixedWingModeManager::soar_apply(position_setpoint_s &current_sp)
 }
 
 void
-FixedWingModeManager::control_soar_thermal(const Vector2f &ground_speed)
+FixedWingModeManager::control_soar_thermal(const float control_interval, const Vector2f &ground_speed)
 {
 	const Vector2f centre{_soar_out.centre_x, _soar_out.centre_y};
 	const Vector2f position{_local_pos.x, _local_pos.y};
@@ -399,7 +407,7 @@ FixedWingModeManager::control_soar_thermal(const Vector2f &ground_speed)
 	};
 	_lateral_ctrl_sp_pub.publish(lateral_ctrl_sp);
 
-	const fixed_wing_longitudinal_setpoint_s longitudinal_ctrl_sp = {
+	fixed_wing_longitudinal_setpoint_s longitudinal_ctrl_sp = {
 		.timestamp = hrt_absolute_time(),
 		.altitude = _current_altitude,
 		.height_rate = NAN,
@@ -407,6 +415,8 @@ FixedWingModeManager::control_soar_thermal(const Vector2f &ground_speed)
 		.pitch_direct = NAN,
 		.throttle_direct = NAN
 	};
+	// without a setpoint the follower reads the cycle as ineligible and its ground guard stops
+	applyTerrainFollow(control_interval, _current_altitude, &longitudinal_ctrl_sp, false);
 	_longitudinal_ctrl_sp_pub.publish(longitudinal_ctrl_sp);
 
 	_ctrl_configuration_handler.setThrottleMin(0.f);

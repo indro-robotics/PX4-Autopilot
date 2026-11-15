@@ -78,10 +78,13 @@ public:
 
 	static bool ownsAltitude(uint8_t state) { return state >= FOLLOW && state <= RANGE_LOST; }
 
-	static bool followBit(int32_t en, Nav nav)
+	// soaring flies its own height band in Hold: a follow at FW_TF_HAGL would hold it under its floor
+	static bool followBit(int32_t en, Nav nav, bool soaring = false)
 	{
-		return (nav == NAV_HOLD && (en & 1)) || (nav == NAV_MISSION && (en & 2));
+		return !soaring && ((nav == NAV_HOLD && (en & 1)) || (nav == NAV_MISSION && (en & 2)));
 	}
+
+	static bool guardActs(uint8_t state) { return state == UPLIFT || state == PULL_UP; }
 
 	static float rawHagl(float range, float cos_tilt);
 

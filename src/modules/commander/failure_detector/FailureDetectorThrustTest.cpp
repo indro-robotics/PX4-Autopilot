@@ -95,6 +95,27 @@ TEST_F(FailureDetectorThrustTest, LowThrottleDoesNotSet)
 	EXPECT_FALSE(_tl.lost());
 }
 
+TEST_F(FailureDetectorThrustTest, ThrottleAtTheThresholdSets)
+{
+	// FD_FW_TL_THR is the throttle at or above which the motor is expected to add energy
+	cruise();
+	EXPECT_NEAR(fly(3.5f, 0.7f, -1.4f), 2.f, 0.03f);
+	EXPECT_TRUE(_tl.lost());
+}
+
+TEST_F(FailureDetectorThrustTest, MotorCommandedOffNeverSets)
+{
+	// a soaring glide sinks 1.4 m/s at zero throttle for minutes, at the shipped threshold and at its minimum of 0
+	for (float threshold : {0.7f, 0.f}) {
+		_tl = ThrustLoss{};
+		cruise();
+		EXPECT_LT(fly(120.f, 0.f, -1.4f, true, true, {2.f, threshold, -0.8f}), 0.f) << threshold;
+		EXPECT_FALSE(_tl.lost()) << threshold;
+		// the motor restart at the floor that adds no energy is flagged 2 s after the throttle is back
+		EXPECT_NEAR(fly(3.5f, 1.f, -1.4f, true, true, {2.f, threshold, -0.8f}), 2.f, 0.03f) << threshold;
+	}
+}
+
 TEST_F(FailureDetectorThrustTest, OneSecondDeficitDoesNotSet)
 {
 	cruise();

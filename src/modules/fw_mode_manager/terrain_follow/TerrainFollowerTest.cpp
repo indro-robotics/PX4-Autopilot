@@ -497,6 +497,48 @@ TEST_F(TerrainFollowerTest, FollowBits)
 	EXPECT_FALSE(TF::followBit(7, TF::NAV_RETURN));
 }
 
+TEST_F(TerrainFollowerTest, SoaringSuspendsFollowAndKeepsTheGuard)
+{
+	// FW_TF_EN 7 in Hold and in Mission: soaring in CLIMB, GLIDE or THERMAL takes the follow bits, nothing else
+	EXPECT_FALSE(TF::followBit(7, TF::NAV_HOLD, true));
+	EXPECT_FALSE(TF::followBit(7, TF::NAV_MISSION, true));
+	EXPECT_TRUE(TF::followBit(7, TF::NAV_HOLD, false));
+
+	p.ttg = 0.f;
+	in.guard = true;
+	follow();
+	in.follow_wanted = TF::followBit(7, TF::NAV_HOLD, true);
+	EXPECT_EQ(step().state, TF::STANDBY);
+	EXPECT_FALSE(out.use_rate);
+	EXPECT_FALSE(out.cap_bank);
+	EXPECT_FALSE(TF::guardActs(out.state));
+
+	// the glide sinks to 7 m over rising ground: the guard pulls up after 0.2 s under the 8 m floor
+	setHeight(7.f);
+	EXPECT_EQ(run(0.18f).state, TF::STANDBY);
+	EXPECT_EQ(run(0.04f).state, TF::PULL_UP);
+	EXPECT_TRUE(TF::guardActs(out.state));
+	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+
+	// soaring ended: back over 1.5 x 8 = 12 m for 1 s the follower resumes by its own rule
+	in.follow_wanted = TF::followBit(7, TF::NAV_HOLD, false);
+	setHeight(20.f);
+	run(1.1f);
+	EXPECT_EQ(run(0.1f).state, TF::FOLLOW);
+	EXPECT_FALSE(TF::guardActs(out.state));
+}
+
+TEST_F(TerrainFollowerTest, GuardActsInUpliftAndPullUpOnly)
+{
+	EXPECT_TRUE(TF::guardActs(TF::UPLIFT));
+	EXPECT_TRUE(TF::guardActs(TF::PULL_UP));
+
+	// FOLLOW must not end soaring: it is the state soaring starts from with a follow bit set
+	for (uint8_t state : {TF::OFF, TF::STANDBY, TF::FOLLOW, TF::RANGE_LOST, TF::FAULT}) {
+		EXPECT_FALSE(TF::guardActs(state)) << (int)state;
+	}
+}
+
 TEST_F(TerrainFollowerTest, TiltCorrected)
 {
 	const float c30 = cosf(30.f * static_cast<float>(M_PI) / 180.f);

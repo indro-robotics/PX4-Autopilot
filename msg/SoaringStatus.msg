@@ -23,10 +23,11 @@ uint8 REASON_WEAK_LIFT = 9
 uint8 REASON_CEILING = 10
 uint8 REASON_ESTIMATOR = 12
 uint8 REASON_AIRSPEED_LOW = 13
-uint8 REASON_OPERATOR = 14 # an end by OPERATOR, MODE, FAILSAFE, MOTOR or the turn check holds until SOAR_EN 0 then 1 or disarm
+uint8 REASON_OPERATOR = 14 # an end by OPERATOR, MODE, FAILSAFE, MOTOR, TERRAIN or the turn check holds until SOAR_EN 0 then 1 or disarm
 uint8 REASON_MOTOR = 15
 uint8 REASON_WIND = 16
 uint8 REASON_CONFIG = 17
+uint8 REASON_TERRAIN = 18
 
 uint8 reason # inhibit reason in INHIBIT, else the reason of the last transition
 

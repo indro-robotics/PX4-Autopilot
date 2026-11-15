@@ -64,7 +64,8 @@ public:
 
 		// total_energy_rate is already low-passed by FW_T_STE_R_TC; a second filter delays a climb-out loss past 5 s
 		const float e = energy_rate / 9.81f;
-		const bool thrust_expected = throttle >= p.throttle;
+		// a motor commanded off, as in a soaring glide, loses energy at any threshold
+		const bool thrust_expected = throttle > 0.f && throttle >= p.throttle;
 		// TECS lowers the throttle once thrust is back, so the energy gain alone clears the flag
 		// rising air near the ground would clear the flag over a dead motor and bank the glide toward its setpoint
 		const bool change = _lost ? (e > -p.rate && !(low && flying)) : (thrust_expected && flying && e < p.rate);

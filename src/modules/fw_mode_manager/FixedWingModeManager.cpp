@@ -577,7 +577,7 @@ FixedWingModeManager::control_auto(const float control_interval, const Vector2d 
 #ifdef CONFIG_FW_SOARING
 
 	if (_soar_out.state == soaring::State::THERMAL) {
-		control_soar_thermal(ground_speed);
+		control_soar_thermal(control_interval, ground_speed);
 		return;
 	}
 
@@ -2600,7 +2600,12 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 	in.landing = _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LAND
 		     || (_position_setpoint_next_valid && _pos_sp_triplet.next.type == position_setpoint_s::SETPOINT_TYPE_LAND)
 		     || _landing_abort_status || approach;
-	in.follow_wanted = latched && TerrainFollower::followBit(en, nav)
+#ifdef CONFIG_FW_SOARING
+	const bool soaring = _soar_out.state >= soaring::State::CLIMB;
+#else
+	const bool soaring = false;
+#endif // CONFIG_FW_SOARING
+	in.follow_wanted = latched && TerrainFollower::followBit(en, nav, soaring)
 			   && !(nav == TerrainFollower::NAV_MISSION && _mission_land_start >= 0 && _mission_seq >= _mission_land_start);
 	in.guard = en & 4;
 	in.in_return = nav == TerrainFollower::NAV_RETURN;

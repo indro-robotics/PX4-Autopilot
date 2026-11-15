@@ -384,6 +384,11 @@ FwLateralLongitudinalControl::tecs_update_pitch_throttle(const float control_int
 	// when flying tight turns. It's in this case much safer to just set the estimated airspeed rate to 0.
 	const float airspeed_rate_estimate = 0.f;
 
+	// the fast descent would dive the thrust loss glide at FW_AIRSPD_MAX and spend the height its reach is counted on
+	const bool thrust_lost = (_vehicle_status_sub.get().failure_detector_status & vehicle_status_s::FAILURE_MOTOR)
+				 && _param_fd_fw_tl_time.get() > 0.f;
+	_tecs.set_fast_descend_altitude_error(thrust_lost ? -1.f : _param_fw_t_fast_alt_err.get());
+
 	_tecs.update(_long_control_state.pitch_rad - radians(_param_fw_psp_off.get()),
 		     _long_control_state.altitude_msl,
 		     alt_sp,

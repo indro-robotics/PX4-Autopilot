@@ -483,7 +483,6 @@ private:
 #ifdef CONFIG_FW_SOARING
 	uORB::Subscription _home_position_sub{ORB_ID(home_position)};
 	uORB::Subscription _failsafe_flags_sub{ORB_ID(failsafe_flags)};
-	uORB::Subscription _tecs_status_sub{ORB_ID(tecs_status)};
 	uORB::Publication<soaring_status_s> _soaring_status_pub{ORB_ID(soaring_status)};
 	uORB::Publication<debug_key_value_s> _debug_key_value_pub{ORB_ID(debug_key_value)};
 
@@ -496,7 +495,6 @@ private:
 	hrt_abstime _time_soar_airspeed{0};
 	float _roll{0.f};
 	uint8_t _soar_operator_cmd{0};
-	float _soar_throttle{0.f};
 	int32_t _soar_act_fail_act{0};
 	hrt_abstime _time_soar_status{0};
 	hrt_abstime _time_soar_debug{0};
@@ -505,7 +503,7 @@ private:
 	void soar_update(const hrt_abstime now);
 	void soar_events(const soaring::State prev_state, const uint8_t prev_reason, const float height);
 	void soar_apply(position_setpoint_s &current_sp);
-	void control_soar_thermal(const Vector2f &ground_speed);
+	void control_soar_thermal(const float control_interval, const Vector2f &ground_speed);
 #endif // CONFIG_FW_SOARING
 
 	// Update our local parameter cache.

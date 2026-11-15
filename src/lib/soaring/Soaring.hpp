@@ -69,7 +69,8 @@ enum Reason : uint8_t {
 	REASON_OPERATOR,
 	REASON_MOTOR,
 	REASON_WIND,
-	REASON_CONFIG
+	REASON_CONFIG,
+	REASON_TERRAIN
 };
 
 enum Operator : uint8_t {
@@ -124,7 +125,6 @@ struct Input {
 	float roll{0.f};		// [rad]
 	float yaw{0.f};			// [rad]
 	float accel_x{0.f};		// [m/s2] kinematic acceleration along the body x axis
-	float throttle{0.f};		// TECS throttle setpoint
 	float wind_n{0.f};		// [m/s]
 	float wind_e{0.f};		// [m/s]
 	bool wind_valid{false};
@@ -183,6 +183,9 @@ public:
 
 	// [W, R, x, y]: strength m/s, radius m, centre north and east of the aircraft m
 	static float updraft(const float s[4]);
+
+	// a motor that stays dead at the restart is flagged by the thrust loss check alone, and only Return acts on its flag
+	static bool configOk(int32_t act_fail_act, float tl_time) { return act_fail_act == 3 && tl_time > 0.f; }
 	static void jacobian(const float s[4], float H[4]);
 
 private:
@@ -198,7 +201,6 @@ private:
 	float _good_s{0.f};
 	float _aspd_low_s{0.f};
 	float _glide_bar_s{0.f};
-	float _restart_low_s{0.f};
 	uint8_t _latch{REASON_NONE};
 	bool _speed_hold{false};
 	float _climb_sp{0.f};

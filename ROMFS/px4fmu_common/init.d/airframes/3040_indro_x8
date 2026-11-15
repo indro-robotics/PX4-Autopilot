@@ -154,14 +154,24 @@ param set-default FW_LND_EARLYCFG 1
 param set-default FW_LND_FL_PMAX 4
 param set-default FW_LND_FL_PMIN 4
 param set-default FW_LND_FL_TIME 0.3
-# Flare trigger stays on FW_LND_FL_TIME: a time to touchdown of 1.4 s landed no softer in gusts.
+# Stock flare trigger.
 param set-default FW_LND_FL_TTD 0
 param set-default FW_LND_FLALT 1.5
 param set-default FW_LND_THRTC_SC 0.2
-# No headwind additive: 0.2 landed no softer and touched down 1 m/s faster.
+# No headwind additive.
 param set-default FW_LND_WIND_SC 0
 # The pitot reads wind on the parked wing.
 param set-default LNDFW_AIRSPD_MAX 8.0
+
+# SOARING
+# Off: the 60 m fence leaves no height band, and no thermal has been flown on the aircraft.
+param set-default SOAR_EN 0
+# A descent of more than 40 m flies FW_AIRSPD_MAX at minimum throttle: a thermal on the way down cannot hold the wing up.
+param set-default FW_T_F_ALT_ERR 40
+
+# TERRAIN FOLLOW
+# Off: the follow bits act only when set in flight, and the guard bit waits for its regression flights.
+param set-default FW_TF_EN 0
 
 # AUX
 param set-default PWM_AUX_DIS1 1500

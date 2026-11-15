@@ -266,8 +266,9 @@ MissionBlock::is_mission_item_reached_or_completed()
 				}
 
 			} else if (dist >= 0.f && dist_xy <= (_navigator->get_acceptance_radius() + mission_item_loiter_radius_abs)
-				   && dist_z <= _navigator->get_altitude_acceptance_radius()) {
+				   && (dist_z <= _navigator->get_altitude_acceptance_radius() || _navigator->thrust_lost())) {
 				// loitering, check if new altitude is reached, while still also having check on position
+				// after a thrust loss the ring alone ends the orbit: the glide has no height for the circle
 
 				_waypoint_position_reached = true;
 			}
@@ -453,7 +454,8 @@ MissionBlock::is_mission_item_reached_or_completed()
 			const bool enforce_exit_course = _navigator->get_vstatus()->vehicle_type != vehicle_status_s::VEHICLE_TYPE_ROTARY_WING
 							 && next_sp.valid
 							 && curr_sp_new->type == position_setpoint_s::SETPOINT_TYPE_LOITER
-							 && (_mission_item.force_heading || _mission_item.nav_cmd == NAV_CMD_WAYPOINT);
+							 && (_mission_item.force_heading || _mission_item.nav_cmd == NAV_CMD_WAYPOINT)
+							 && !(_mission_item.nav_cmd == NAV_CMD_LOITER_TO_ALT && _navigator->thrust_lost());
 
 			// can only enforce exit course if next waypoint is not within loiter radius of current waypoint (with small margin)
 			const bool exit_course_is_reachable = dist_current_next > 1.05f * curr_sp_new->loiter_radius;

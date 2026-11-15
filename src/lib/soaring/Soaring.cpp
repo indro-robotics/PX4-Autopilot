@@ -44,11 +44,6 @@ static constexpr float kDeg = 0.01745329f;
 static constexpr float kPi = 3.14159265f;
 static constexpr float kTwoPi = 6.2831853f;
 static constexpr float kAspdExcess = 2.5f;	// [m/s] pitot TAS above the GPS turn estimate that ends soaring
-// the restart check mirrors the FD_FW_TL_THR, FD_FW_TL_RATE and FD_FW_TL_TIME defaults: 2 s to throttle 0.7, -0.8 m/s, 2 s
-static constexpr float kRestartGraceS = 2.f;
-static constexpr float kRestartThrottle = 0.7f;
-static constexpr float kRestartRate = -0.8f;
-static constexpr float kRestartS = 2.f;
 // a single reversed yaw sample in turbulence must not restart the turn
 static constexpr float kTurnReverse = 30.f * kDeg;
 static constexpr float kCutBand = 50.f;	// [m] under SOAR_ALT_CUT where CLIMB flies FW_AIRSPD_TRIM
@@ -333,16 +328,10 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 	_aspd_low_s = (unpowered && cas < cas_min) ? _aspd_low_s + dt : 0.f;
 	const bool aspd_low = _aspd_low_s >= 1.f;
 	const bool active = _state >= State::CLIMB;
-	_restart_low_s = (_state == State::CLIMB && _state_s >= kRestartGraceS && te < kRestartRate
-			  && in.throttle >= kRestartThrottle) ? _restart_low_s + dt : 0.f;
 
 	uint8_t inhibit = REASON_NONE;
 
-	if (_restart_low_s >= kRestartS) {
-		// a restart that adds no energy ends soaring and leaves the motor failure to the stock failsafe
-		inhibit = REASON_MOTOR;
-
-	} else if (!in.allowed) {
+	if (!in.allowed) {
 		inhibit = in.inhibit_reason != REASON_NONE ? in.inhibit_reason : (uint8_t)REASON_MODE;
 
 	} else if (!in.wind_valid) {
@@ -366,7 +355,7 @@ void Soaring::update(const Input &in, const Params &p, Output &out)
 	}
 
 	if (p.enabled && (inhibit == REASON_OPERATOR || (active && (inhibit == REASON_MODE || inhibit == REASON_FAILSAFE
-			  || inhibit == REASON_MOTOR)))) {
+			  || inhibit == REASON_MOTOR || inhibit == REASON_TERRAIN)))) {
 		_latch = inhibit;
 	}
 

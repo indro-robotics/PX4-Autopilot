@@ -122,7 +122,6 @@ struct Rig {
 	float rate{14.f / 60.f};
 	bool motor{true};		// CLIMB adds energy for a climb_powered climb
 	float climb_powered{3.f};	// [m/s]
-	float throttle{1.f};		// TECS throttle setpoint in CLIMB
 
 	Rig(bool clean_turn = true)
 	{
@@ -173,7 +172,6 @@ struct Rig {
 			in.tas = speed;
 			in.roll = roll;
 			in.yaw = psi;
-			in.throttle = out.state == State::CLIMB ? throttle : 0.f;
 			soar.update(in, p, out);
 		}
 	}
@@ -970,8 +968,8 @@ TEST(SoaringStates, WindInvalidInhibitsEveryState)
 	}
 }
 
-// Glides to the 100 m floor, then the motor gives no thrust for dead_s seconds after the crossing.
-static float restartFails(float dead_s)
+// Glides to the 100 m floor with a motor that gives no thrust, then flies dead_s seconds past the crossing.
+static Rig deadMotorAtTheFloor(float dead_s)
 {
 	Rig rig;
 	rig.in.height = 106.f;
@@ -983,86 +981,104 @@ static float restartFails(float dead_s)
 	}
 
 	EXPECT_EQ(rig.out.reason, REASON_FLOOR);
-	const float t_floor = rig.t;
-
-	while (rig.out.state == State::CLIMB && rig.t < t_floor + 20.f) {
-		rig.motor = rig.t - t_floor >= dead_s;
-		rig.step(kDt);
-	}
-
-	return rig.out.state == State::INHIBIT && rig.out.reason == REASON_MOTOR ? rig.t - t_floor : -1.f;
+	rig.step(dead_s);
+	return rig;
 }
 
-TEST(SoaringRestart, DeadMotorEndsSoaringAfterFourSeconds)
+static void thrustLossFlag(Rig &rig)
 {
-	// 2 s for the throttle to rise, then 2 s of energy rate under -0.8 m/s
-	const float t = restartFails(1000.f);
-	EXPECT_GE(t, 3.98f);
-	EXPECT_LE(t, 4.5f);
+	rig.in.allowed = false;
+	rig.in.inhibit_reason = REASON_MOTOR;
+	rig.step(kDt);
 }
 
-TEST(SoaringRestart, LateHealthyRestartKeepsClimbing)
+TEST(SoaringMotor, DeadRestartKeepsClimbUntilTheThrustLossFlag)
 {
-	EXPECT_LT(restartFails(0.f), 0.f);
-	EXPECT_LT(restartFails(3.5f), 0.f);
-}
-
-TEST(SoaringRestart, WeakClimbIsNoMotorFailure)
-{
-	// a motor that holds the energy rate at -0.3 m/s, in sink, still adds energy: over -0.8 m/s
-	Rig rig;
-	rig.in.height = 106.f;
-	rig.toGlide();
-	rig.climb_powered = -0.3f;
-
-	while (rig.out.state == State::GLIDE && rig.t < 100.f) {
-		rig.step(kDt);
-	}
-
-	ASSERT_EQ(rig.out.state, State::CLIMB);
-	rig.step(20.f);
+	// soaring holds no motor check of its own: 20 s of sinking CLIMB end nothing, the flag ends it in one sample
+	Rig rig = deadMotorAtTheFloor(20.f);
 	EXPECT_EQ(rig.out.state, State::CLIMB);
+	EXPECT_LT(rig.in.height, 100.f - 20.f);
+	thrustLossFlag(rig);
+	EXPECT_EQ(rig.out.state, State::INHIBIT);
+	EXPECT_EQ(rig.out.reason, REASON_MOTOR);
 }
 
-// CLIMB holds cut + 5 m with the cut gate closed and flies through 1.5 m/s of sink for 3 s at this throttle.
-static uint8_t sinkInClimb(float throttle)
+TEST(SoaringMotor, SinkInClimbIsNoMotorFailure)
 {
+	// CLIMB holds cut + 5 m with the cut gate closed and flies through 1.5 m/s of sink for 30 s
 	Rig rig;
 	rig.p.alt_pat = 215.f;
 	rig.in.height = 200.f;
 	rig.step(2.1f);
-	EXPECT_EQ(rig.out.state, State::CLIMB);
+	ASSERT_EQ(rig.out.state, State::CLIMB);
 	rig.in.height = 255.f;
 	rig.climb_powered = 0.f;
 	rig.step(5.f);
-	rig.throttle = throttle;
 	rig.w = -1.5f;
-	rig.step(3.f);
-	rig.w = 0.f;
-	rig.step(1.f);
-	return rig.out.reason;
+	rig.step(30.f);
+	EXPECT_EQ(rig.out.state, State::CLIMB);
+	EXPECT_EQ(rig.out.reason, REASON_NONE);
 }
 
-TEST(SoaringRestart, SinkAtPartThrottleIsNoMotorFailure)
+TEST(SoaringMotor, FlagEndIsLatched)
 {
-	// FD_FW_TL_THR 0.7: below it the motor is not expected to add energy
-	EXPECT_EQ(sinkInClimb(0.5f), REASON_NONE);
-	EXPECT_EQ(sinkInClimb(0.69f), REASON_NONE);
-	EXPECT_EQ(sinkInClimb(0.7f), REASON_MOTOR);
-}
-
-TEST(SoaringRestart, MotorEndIsLatched)
-{
-	Rig rig;
-	rig.in.height = 106.f;
-	rig.toGlide();
-	rig.motor = false;
-	rig.step(10.f);
+	Rig rig = deadMotorAtTheFloor(4.f);
+	thrustLossFlag(rig);
 	ASSERT_EQ(rig.out.reason, REASON_MOTOR);
+	// the flag clears on a motor that runs again; soaring stays off
+	rig.in.allowed = true;
+	rig.in.inhibit_reason = REASON_NONE;
 	rig.motor = true;
 	rig.step(10.f);
 	EXPECT_EQ(rig.out.state, State::INHIBIT);
 	EXPECT_EQ(rig.out.reason, REASON_MOTOR);
+}
+
+TEST(SoaringMotor, ConfigNeedsReturnOnTheFlagAndTheThrustLossCheck)
+{
+	// COM_ACT_FAIL_ACT 3 is Return; FD_FW_TL_TIME 0 switches the thrust loss check off
+	EXPECT_TRUE(Soaring::configOk(3, 2.2f));
+	EXPECT_TRUE(Soaring::configOk(3, 0.1f));
+	EXPECT_FALSE(Soaring::configOk(3, 0.f));
+	EXPECT_FALSE(Soaring::configOk(3, -1.f));
+
+	for (int act : {0, 1, 2, 4}) {
+		EXPECT_FALSE(Soaring::configOk(act, 2.2f)) << act;
+	}
+}
+
+TEST(SoaringTerrain, GuardEndsEveryActiveStateLatched)
+{
+	const State states[] = {State::CLIMB, State::GLIDE, State::THERMAL};
+
+	for (State state : states) {
+		Rig rig;
+		toState(rig, state);
+		rig.in.allowed = false;
+		rig.in.inhibit_reason = REASON_TERRAIN;
+		rig.step(kDt);
+		EXPECT_EQ(rig.out.state, State::INHIBIT) << (int)state;
+		// the guard lets go once the aircraft is clear; a glide resumed there would sink into it again
+		rig.in.allowed = true;
+		rig.in.inhibit_reason = REASON_NONE;
+		rig.step(10.f);
+		EXPECT_EQ(rig.out.state, State::INHIBIT) << (int)state;
+		EXPECT_EQ(rig.out.reason, REASON_TERRAIN) << (int)state;
+	}
+}
+
+TEST(SoaringTerrain, GuardBeforeSoaringStartsIsNotLatched)
+{
+	Rig rig;
+	rig.in.allowed = false;
+	rig.in.inhibit_reason = REASON_TERRAIN;
+	rig.step(5.f);
+	ASSERT_EQ(rig.out.state, State::INHIBIT);
+	ASSERT_EQ(rig.out.reason, REASON_TERRAIN);
+	rig.in.allowed = true;
+	rig.in.inhibit_reason = REASON_NONE;
+	rig.step(2.1f);
+	EXPECT_EQ(rig.out.state, State::GLIDE);
 }
 
 // Circles at true airspeed v in a wind toward the east: in the air mass at constant bank, or on a ground-fixed
