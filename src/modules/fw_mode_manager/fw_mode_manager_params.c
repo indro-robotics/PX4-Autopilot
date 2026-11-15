@@ -520,8 +520,8 @@ PARAM_DEFINE_FLOAT(FW_LND_FL_SINK, 0.25f);
 /**
  * Landing flare pitch gain
  *
- * Flare pitch setpoint per m/s of height rate error, in deg per m/s. On range data the height rate
- * setpoint runs from the entry sink at the flare height to FW_LND_FL_SINK on the ground.
+ * Flare pitch setpoint per m/s of height rate error, in deg per m/s. On range data with FW_LND_USETER
+ * above 0 the height rate setpoint runs from the entry sink at the flare height to FW_LND_FL_SINK on the ground.
  *
  * Set to 0 to leave the flare pitch to TECS.
  *
@@ -551,7 +551,8 @@ PARAM_DEFINE_FLOAT(FW_LND_FL_KI, 0.0f);
 /**
  * Landing flare time to touchdown
  *
- * The flare starts at this time to ground at the current sink rate, or at FW_LND_FLALT if higher.
+ * The flare starts at this time to ground at the current sink rate, at least at FW_LND_FLALT and at most at
+ * twice FW_LND_FLALT.
  *
  * Set to 0 to use FW_LND_FL_TIME.
  *

@@ -1443,9 +1443,9 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 	// a dip under the slope is climbed back; a final entered under the slope holds its start height until it meets it
 	const float altitude_setpoint = math::min(glide_slope_reference_alt + glide_slope_rel_alt, _landing_start_altitude);
 
-	// flare at the maximum of the altitude determined by the time before touchdown and a minimum flare altitude
-	const float flare_rel_alt = math::max((_param_fw_lnd_fl_ttd.get() > FLT_EPSILON ? _param_fw_lnd_fl_ttd.get() :
-					       _param_fw_lnd_fl_time.get()) * _local_pos.vz, _param_fw_lnd_flalt.get());
+	// flare at the altitude determined by the time before touchdown, between the minimum flare altitude and twice it
+	const float flare_rel_alt = flare_law::triggerHeight(_param_fw_lnd_fl_ttd.get() > FLT_EPSILON ? _param_fw_lnd_fl_ttd.get() :
+				    _param_fw_lnd_fl_time.get(), _local_pos.vz, _param_fw_lnd_flalt.get());
 
 
 	// the terrain estimate (if enabled) is always used to determine the flaring altitude
@@ -1458,8 +1458,9 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 			_flare_states.start_time = now;
 			_flare_states.initial_height_rate_setpoint = -_local_pos.vz;
 			_flare_states.initial_height = math::max(flare_rel_alt, FLT_EPSILON);
-			_flare_states.pitch_entry = _pitch;
-			_flare_states.range_schedule = _param_fw_lnd_fl_kp.get() > FLT_EPSILON && _local_pos.dist_bottom_valid;
+			_flare_states.pitch_entry = flareEntryPitch(now);
+			_flare_states.range_schedule = flare_law::rangeLatch(_param_fw_lnd_fl_kp.get(), _local_pos.dist_bottom_valid,
+						       _param_fw_lnd_useter.get());
 			events::send(events::ID("fixedwing_position_control_landing_flaring"), events::Log::Info,
 				     "Landing, flaring");
 		}
@@ -1632,9 +1633,9 @@ FixedWingModeManager::control_auto_landing_circular(const hrt_abstime &now, cons
 					      position_controller_landing_status_s::TERRAIN_TIMEOUT);
 	const float terrain_alt = getLandingTerrainAltitudeEstimate(now, pos_sp_curr.alt, false, abort_on_terrain_timeout);
 
-	// flare at the maximum of the altitude determined by the time before touchdown and a minimum flare altitude
-	const float flare_rel_alt = math::max((_param_fw_lnd_fl_ttd.get() > FLT_EPSILON ? _param_fw_lnd_fl_ttd.get() :
-					       _param_fw_lnd_fl_time.get()) * _local_pos.vz, _param_fw_lnd_flalt.get());
+	// flare at the altitude determined by the time before touchdown, between the minimum flare altitude and twice it
+	const float flare_rel_alt = flare_law::triggerHeight(_param_fw_lnd_fl_ttd.get() > FLT_EPSILON ? _param_fw_lnd_fl_ttd.get() :
+				    _param_fw_lnd_fl_time.get(), _local_pos.vz, _param_fw_lnd_flalt.get());
 
 	float loiter_radius = fabsf(pos_sp_curr.loiter_radius);
 	bool loiter_direction_ccw = pos_sp_curr.loiter_direction_counter_clockwise;
@@ -1653,8 +1654,9 @@ FixedWingModeManager::control_auto_landing_circular(const hrt_abstime &now, cons
 			_flare_states.start_time = now;
 			_flare_states.initial_height_rate_setpoint = -_local_pos.vz;
 			_flare_states.initial_height = math::max(flare_rel_alt, FLT_EPSILON);
-			_flare_states.pitch_entry = _pitch;
-			_flare_states.range_schedule = _param_fw_lnd_fl_kp.get() > FLT_EPSILON && _local_pos.dist_bottom_valid;
+			_flare_states.pitch_entry = flareEntryPitch(now);
+			_flare_states.range_schedule = flare_law::rangeLatch(_param_fw_lnd_fl_kp.get(), _local_pos.dist_bottom_valid,
+						       _param_fw_lnd_useter.get());
 			events::send(events::ID("fixedwing_position_control_landing_circle_flaring"), events::Log::Info,
 				     "Landing, flaring");
 		}
@@ -2337,7 +2339,16 @@ float FixedWingModeManager::flarePitch(float height_rate_setpoint, float pitch_m
 
 	return flare_law::pitch(height_rate_setpoint, _flare_states.initial_height_rate_setpoint, _flare_states.pitch_entry,
 				_local_pos.vz, speed, radians(_param_fw_lnd_fl_kp.get()), radians(_param_fw_lnd_fl_ki.get()), pitch_min,
-				math::min(pitch_max, radians(_param_fw_lnd_fl_pmax.get())), dt, _flare_states.pitch_integ);
+				math::min(pitch_max, flare_law::ceiling(_flare_states.pitch_entry, radians(_param_fw_lnd_fl_pmax.get()),
+						hrt_elapsed_time(&_flare_states.start_time) * 1.e-6f, _param_fw_lnd_fl_time.get())), dt, _flare_states.pitch_integ);
+}
+
+float FixedWingModeManager::flareEntryPitch(const hrt_abstime &now)
+{
+	tecs_status_s tecs_status;
+
+	// a stale sample means TECS was not flying the pitch, so the measured pitch seeds the law
+	return (_tecs_status_sub.copy(&tecs_status) && now < tecs_status.timestamp + 200_ms) ? tecs_status.pitch_sp_rad : _pitch;
 }
 
 float FixedWingModeManager::getMaxRollAngleNearGround(const float altitude, const float terrain_altitude) const

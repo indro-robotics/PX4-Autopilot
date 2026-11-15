@@ -38,6 +38,24 @@
 namespace flare_law
 {
 
+// capped at twice flalt so a momentary downdraft does not start the flare high
+inline float triggerHeight(float time, float vz, float flalt)
+{
+	return math::constrain(time * vz, flalt, 2.f * flalt);
+}
+
+// without terrain use the landing height is not range, so only the time ramp is valid there
+inline bool rangeLatch(float kp, bool range_valid, int use_terrain)
+{
+	return kp > FLT_EPSILON && range_valid && use_terrain > 0;
+}
+
+// starts at the entry pitch so the first flare command is not clipped, never under pmax
+inline float ceiling(float pitch_entry, float pmax, float time, float ramp_time)
+{
+	return math::max(pmax, pitch_entry + (pmax - pitch_entry) * math::min(time / ramp_time, 1.f));
+}
+
 // height rate setpoint, positive up: the entry rate at the entry height, -sink on the ground
 inline float rangeSchedule(float height, float height_entry, float height_rate_entry, float sink)
 {

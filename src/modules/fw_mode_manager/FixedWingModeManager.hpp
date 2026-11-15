@@ -77,6 +77,7 @@
 #include <uORB/topics/position_controller_landing_status.h>
 #include <uORB/topics/position_controller_status.h>
 #include <uORB/topics/position_setpoint_triplet.h>
+#include <uORB/topics/tecs_status.h>
 #include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/topics/vehicle_attitude.h>
@@ -187,6 +188,7 @@ private:
 	uORB::Subscription _vehicle_command_sub{ORB_ID(vehicle_command)};
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
+	uORB::Subscription _tecs_status_sub{ORB_ID(tecs_status)};
 
 	uORB::Publication<vehicle_local_position_setpoint_s> _local_pos_sp_pub{ORB_ID(vehicle_local_position_setpoint)};
 	uORB::Publication<position_controller_landing_status_s>	_pos_ctrl_landing_status_pub{ORB_ID(position_controller_landing_status)};
@@ -348,6 +350,7 @@ private:
 	} _flare_states;
 
 	float flarePitch(float height_rate_setpoint, float pitch_min, float pitch_max, const Vector2f &ground_speed, float dt);
+	float flareEntryPitch(const hrt_abstime &now);
 
 	// [m] last terrain estimate which was valid
 	float _last_valid_terrain_alt_estimate{0.0f};
