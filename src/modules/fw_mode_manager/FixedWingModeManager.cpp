@@ -90,6 +90,9 @@ FixedWingModeManager::init()
 		return false;
 	}
 
+	// the logger records an optional topic only when it exists at logger start
+	_terrain_follow_status_pub.advertise();
+
 	return true;
 }
 
@@ -787,7 +790,7 @@ FixedWingModeManager::control_auto_position(const float control_interval, const 
 		.throttle_direct = NAN
 	};
 
-	applyTerrainFollow(control_interval, position_sp_alt, &fw_longitudinal_control_sp);
+	applyTerrainFollow(control_interval, position_sp_alt, &fw_longitudinal_control_sp, false);
 	_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
 	float throttle_min = NAN;
@@ -945,9 +948,7 @@ FixedWingModeManager::control_auto_loiter(const float control_interval, const Ve
 		.throttle_direct = NAN
 	};
 
-	if (!_landing_abort_status) {
-		applyTerrainFollow(control_interval, pos_sp_curr.alt, &fw_longitudinal_control_sp);
-	}
+	applyTerrainFollow(control_interval, pos_sp_curr.alt, &fw_longitudinal_control_sp, close_to_circle);
 
 	_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
@@ -2237,7 +2238,7 @@ FixedWingModeManager::Run()
 		}
 
 		if (!_tf_called) {
-			applyTerrainFollow(control_interval, NAN, nullptr);
+			applyTerrainFollow(control_interval, NAN, nullptr, false);
 		}
 
 		if (_control_mode_current != FW_POSCTRL_MODE_OTHER) {
@@ -2313,7 +2314,7 @@ FixedWingModeManager::reset_landing_state()
 }
 
 void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_alt,
-		fixed_wing_longitudinal_setpoint_s *sp)
+		fixed_wing_longitudinal_setpoint_s *sp, const bool close_to_circle)
 {
 	_tf_called = true;
 	const hrt_abstime now = hrt_absolute_time();
@@ -2329,6 +2330,10 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 
 	for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
 		if (_distance_sensor_subs[i].copy(&_range_samples[n])) {
+			if (!_range_stuck[i].live(_range_samples[n].current_distance, _current_altitude)) {
+				_range_samples[n].timestamp = 0;
+			}
+
 			n++;
 		}
 	}
@@ -2360,15 +2365,19 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 
 	_tf_airborne = airborne;
 
-	const bool landing_item = _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LAND
-				  || (_position_setpoint_next_valid && _pos_sp_triplet.next.type == position_setpoint_s::SETPOINT_TYPE_LAND);
+	const bool mission_land = (nav == TerrainFollower::NAV_MISSION || nav == TerrainFollower::NAV_RETURN)
+				  && _mission_land_start >= 0 && _mission_seq > _mission_land_start;
 
 	TerrainFollower::Input in{};
 	in.now_us = now;
+	in.range_time_us = sel.timestamp;
 	in.dt = dt;
-	in.eligible = TerrainFollower::eligible(sp && airborne && _control_mode_current == FW_POSCTRL_MODE_AUTO, landing_item, nav,
-					       _mission_land_start >= 0 && _mission_seq >= _mission_land_start);
-	in.follow_wanted = latched && TerrainFollower::followBit(en, nav);
+	in.eligible = sp && airborne && _control_mode_current == FW_POSCTRL_MODE_AUTO && nav != TerrainFollower::NAV_OTHER;
+	in.landing = _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LAND
+		     || (_position_setpoint_next_valid && _pos_sp_triplet.next.type == position_setpoint_s::SETPOINT_TYPE_LAND)
+		     || _landing_abort_status || (mission_land && close_to_circle);
+	in.follow_wanted = latched && TerrainFollower::followBit(en, nav)
+			   && !(nav == TerrainFollower::NAV_MISSION && _mission_land_start >= 0 && _mission_seq >= _mission_land_start);
 	in.guard = en & 4;
 	in.in_return = nav == TerrainFollower::NAV_RETURN;
 	in.alt_amsl = _current_altitude;
@@ -2376,13 +2385,13 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 	in.nav_alt = nav_alt;
 	in.raw_valid = PX4_ISFINITE(hagl_raw);
 	in.hagl_raw = hagl_raw;
-	in.range_max = range_on ? _range_samples[sel.used].max_distance : 0.f;
+	in.range_max = sel.range_max;
 	in.ekf_valid = _local_pos.dist_bottom_valid;
 	in.hagl_ekf = _local_pos.dist_bottom;
 
 	const float bank = radians(_param_fw_tf_bank.get());
 	const TerrainFollower::Params p{_param_fw_tf_hagl.get(), _param_fw_tf_floor.get(), _param_fw_tf_tc.get(), _param_fw_tf_sink.get(),
-					_param_fw_t_clmb_max.get(), _param_fw_tf_loss_up.get(), _param_fw_tf_ttg.get(), bank};
+					_param_fw_t_clmb_max.get(), _param_fw_tf_loss_up.get(), _param_fw_tf_ttg.get(), bank, _param_fw_tf_maxdn.get()};
 
 	const TerrainFollower::Output out = _terrain_follower.update(in, p);
 
@@ -2425,7 +2434,14 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 
 	_tf_limited = limited;
 
-	if (out.state == TerrainFollower::STANDBY && in.follow_wanted) {
+	if (out.descent_limited && !_tf_descent_limited) {
+		events::send<float>(events::ID("fw_terrain_follow_max_down"), events::Log::Warning,
+				    "Terrain follow descent limited to {1:.0m} under plan", p.max_down);
+	}
+
+	_tf_descent_limited = out.descent_limited;
+
+	if (out.state == TerrainFollower::STANDBY && in.follow_wanted && !_terrain_follower.rangeOk()) {
 		if (now >= _tf_wait_due) {
 			events::send(events::ID("fw_terrain_follow_wait_range"), events::Log::Warning, "Terrain follow waits for range");
 			_tf_wait_due = now + 10_s;
@@ -2458,7 +2474,7 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 		}
 	}
 
-	if (out.state != _tf_state || now >= _tf_status_time + 100_ms) {
+	if (out.state != _tf_state || (en != 0 && now >= _tf_status_time + 100_ms)) {
 		terrain_follow_status_s status{};
 		status.timestamp = now;
 		status.state = out.state;

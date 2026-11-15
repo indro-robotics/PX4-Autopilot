@@ -67,9 +67,11 @@ protected:
 		in.hagl_ekf = h;
 	}
 
+	// one cycle with a new 50 Hz range sample
 	TF::Output step()
 	{
 		in.now_us += static_cast<uint64_t>(kDt * 1e6f);
+		in.range_time_us = in.now_us;
 		out = tf.update(in, p);
 		return out;
 	}
@@ -92,7 +94,7 @@ protected:
 	}
 
 	TF tf;
-	TF::Params p{25.f, 8.f, 4.f, 2.f, 3.f, 10.f, 3.f, 35.f * static_cast<float>(M_PI) / 180.f};
+	TF::Params p{25.f, 8.f, 4.f, 2.f, 3.f, 10.f, 3.f, 35.f * static_cast<float>(M_PI) / 180.f, 10.f};
 	TF::Input in{};
 	TF::Output out{};
 };
@@ -163,9 +165,13 @@ TEST_F(TerrainFollowerTest, GuardUpliftAndExit)
 {
 	in.follow_wanted = false;
 	in.guard = true;
-	setHeight(10.f);
+	// released at 15 m, over 1.5 x 8 + 2 = 14 m
+	setHeight(15.f);
 	in.nav_alt = kTerrain + 10.f;
 	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(10.f);
+	run(3.f);
 	ASSERT_EQ(out.state, TF::UPLIFT);
 	// target 1.5 x 8 = 12 m from 10 m with TC 4 s: 0.5 m/s
 	EXPECT_NEAR(out.height_rate, 0.5f, 0.05f);
@@ -187,7 +193,7 @@ TEST_F(TerrainFollowerTest, UpliftYieldsToFollow)
 {
 	in.follow_wanted = false;
 	in.guard = true;
-	setHeight(10.f);
+	setHeight(15.f);
 	in.nav_alt = kTerrain + 10.f;
 	run(2.1f);
 	ASSERT_EQ(out.state, TF::UPLIFT);
@@ -421,6 +427,15 @@ TEST_F(TerrainFollowerTest, SinkLimited)
 	EXPECT_FLOAT_EQ(out.height_rate, -p.sink);
 }
 
+TEST_F(TerrainFollowerTest, CommandFloorWithTtgZero)
+{
+	p.ttg = 0.f;
+	p.hagl = 10.f;
+	follow();
+	// floor 8 + max(2 x 0 + 1, 7) = 15 m
+	EXPECT_GE(out.hagl_cmd, p.floor + 7.f);
+}
+
 TEST_F(TerrainFollowerTest, CommandClamps)
 {
 	follow();
@@ -473,18 +488,6 @@ TEST_F(TerrainFollowerTest, BitsSetOnGroundWaitForSwitch)
 	EXPECT_FALSE(tf.latchFollow(true, true));
 }
 
-TEST_F(TerrainFollowerTest, Eligibility)
-{
-	EXPECT_TRUE(TF::eligible(true, false, TF::NAV_HOLD, false));
-	EXPECT_TRUE(TF::eligible(true, false, TF::NAV_MISSION, false));
-	EXPECT_TRUE(TF::eligible(true, false, TF::NAV_RETURN, false));
-	EXPECT_TRUE(TF::eligible(true, false, TF::NAV_HOLD, true));
-	EXPECT_FALSE(TF::eligible(false, false, TF::NAV_HOLD, false));
-	EXPECT_FALSE(TF::eligible(true, true, TF::NAV_HOLD, false));
-	EXPECT_FALSE(TF::eligible(true, false, TF::NAV_MISSION, true));
-	EXPECT_FALSE(TF::eligible(true, false, TF::NAV_OTHER, false));
-}
-
 TEST_F(TerrainFollowerTest, FollowBits)
 {
 	EXPECT_TRUE(TF::followBit(1, TF::NAV_HOLD));
@@ -500,4 +503,255 @@ TEST_F(TerrainFollowerTest, TiltCorrected)
 	// 30 deg bank 25 m over flat ground: the beam reads 25 / cos 30 = 28.87 m
 	EXPECT_NEAR(TF::rawHagl(25.f / c30, c30), 25.f, 0.01f);
 	EXPECT_TRUE(isnan(TF::rawHagl(30.f, cosf(41.f * static_cast<float>(M_PI) / 180.f))));
+}
+
+TEST_F(TerrainFollowerTest, FrozenSensorDropped)
+{
+	follow();
+	TF::StuckCheck stuck;
+	const float frozen = 30.f;
+	const float alt0 = in.alt_amsl;
+	float t_dropped = -1.f;
+
+	// the follower descends on a reading that never changes
+	for (int i = 0; i < 200 && out.state != TF::RANGE_LOST; i++) {
+		in.alt_amsl -= 1.f * kDt;
+		in.raw_valid = stuck.live(frozen, in.alt_amsl);
+		in.hagl_raw = in.raw_valid ? frozen : NAN;
+		in.ekf_valid = false;
+
+		if (!in.raw_valid && t_dropped < 0.f) {
+			t_dropped = i * kDt;
+			// dropped once the altitude has moved more than 1.0 m, by 1.1 m
+			EXPECT_GT(alt0 - in.alt_amsl, 1.f);
+			EXPECT_LE(alt0 - in.alt_amsl, 1.1f);
+		}
+
+		step();
+	}
+
+	ASSERT_GE(t_dropped, 0.f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// RANGE_LOST 0.5 s after the last live sample, within one cycle
+	EXPECT_NEAR(static_cast<float>(in.now_us - 1000000) * 1e-6f - 2.1f - t_dropped, 0.5f, 2.f * kDt);
+}
+
+TEST_F(TerrainFollowerTest, LiveSensorOnTrackedSlope)
+{
+	TF::StuckCheck stuck;
+	float alt = 130.f;
+	uint32_t seed = 1;
+	int dropped = 0;
+
+	// 18 m/s down a 10 percent ramp at a constant 25 m: 1.8 m/s of altitude change, 0.02 m of noise per sample
+	for (int i = 0; i < 3000; i++) {
+		alt -= 1.8f * kDt;
+		seed = seed * 1664525u + 1013904223u;
+		const float noise = 0.02f * (static_cast<float>(seed >> 8) / 8388608.f - 1.f);
+		dropped += !stuck.live(25.f + noise, alt);
+	}
+
+	EXPECT_EQ(dropped, 0);
+}
+
+TEST_F(TerrainFollowerTest, DescentBounded)
+{
+	in.ekf_valid = false;
+	in.nav_alt = kTerrain + 30.f;
+	p.hagl = 22.f;
+	const float long_by = 15.f;
+	float h = 30.f;
+	float v = 0.f;
+	bool limited = false;
+	float lowest_settled = INFINITY;
+
+	// the range reads 15 m long; TECS modelled as a 1.5 s lag on the height rate
+	for (int i = 0; i < static_cast<int>(90.f / kDt); i++) {
+		in.alt_amsl = kTerrain + h;
+		in.hagl_raw = h + long_by;
+		in.vz_up = v;
+		step();
+		limited |= out.descent_limited;
+		v += ((out.use_rate ? out.height_rate : 0.f) - v) * kDt / 1.5f;
+		h += v * kDt;
+
+		if (i * kDt > 60.f) {
+			lowest_settled = fminf(lowest_settled, h);
+		}
+	}
+
+	ASSERT_EQ(out.state, TF::FOLLOW);
+	EXPECT_TRUE(limited);
+	// plan 30 m less FW_TF_MAXDN 10 m less 0.1 m
+	EXPECT_GE(lowest_settled, 30.f - 10.f - 0.1f);
+}
+
+TEST_F(TerrainFollowerTest, NotReleasedAfterReset)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	setHeight(7.f);
+	in.nav_alt = kTerrain + 7.f;
+	run(3.1f);
+	EXPECT_EQ(out.state, TF::STANDBY);
+	EXPECT_FALSE(out.cap_bank);
+	// 1.5 x 8 + 2 = 14 m releases the guard
+	setHeight(14.f);
+	run(0.1f);
+	setHeight(7.f);
+	run(0.3f);
+	EXPECT_EQ(out.state, TF::PULL_UP);
+}
+
+TEST_F(TerrainFollowerTest, LandingContextCancels)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 200.f;
+	float h = 30.f;
+	setHeight(h);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::STANDBY);
+
+	// closing at 1.5 m/s down to 13 m: released, between the 14 m release and the 12.5 m closing trip
+	while (h > 13.f) {
+		h -= 1.5f * kDt;
+		setHeight(h);
+		step();
+	}
+
+	ASSERT_EQ(out.state, TF::STANDBY);
+	in.landing = true;
+	EXPECT_EQ(step().state, TF::OFF);
+	in.landing = false;
+	// the go-around Hold at 10 m
+	in.nav_alt = kTerrain + 10.f;
+	bool pulled = false;
+	bool lifted = false;
+	bool capped = false;
+
+	while (h > 9.f) {
+		h -= 1.5f * kDt;
+		setHeight(h);
+		step();
+		pulled |= out.state == TF::PULL_UP;
+		lifted |= out.state == TF::UPLIFT;
+		capped |= out.cap_bank;
+	}
+
+	EXPECT_EQ(out.state, TF::STANDBY);
+	EXPECT_FALSE(pulled);
+	EXPECT_FALSE(lifted);
+	EXPECT_FALSE(capped);
+
+	while (h < 14.5f) {
+		h += 1.5f * kDt;
+		setHeight(h);
+		step();
+	}
+
+	run(0.1f);
+	// nav 10 m under 1.5 x 8 = 12 m: the guard lifts again
+	EXPECT_EQ(out.state, TF::UPLIFT);
+}
+
+TEST_F(TerrainFollowerTest, RangeLostLowSample)
+{
+	follow();
+	in.raw_valid = false;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	setHeight(7.f);
+	run(0.3f);
+	EXPECT_FALSE(tf.rangeOk());
+	EXPECT_EQ(out.state, TF::PULL_UP);
+}
+
+TEST_F(TerrainFollowerTest, RangeLostClosing)
+{
+	follow();
+	in.raw_valid = false;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	float h = 16.f;
+
+	// rising ground under the regained beam, closing at 3 m/s above the floor
+	for (int i = 0; i < 90 && out.state != TF::PULL_UP; i++) {
+		h -= 3.f * kDt;
+		setHeight(h);
+		step();
+	}
+
+	EXPECT_FALSE(tf.rangeOk());
+	EXPECT_EQ(out.state, TF::PULL_UP);
+	EXPECT_GE(h, p.floor);
+}
+
+TEST_F(TerrainFollowerTest, RangeLostTargetRises)
+{
+	follow();
+	in.raw_valid = false;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// climbed to 136 m during the loss; the beam returns at 15 m over ground at 121 m
+	setHeight(15.f, kTerrain + 21.f);
+	step();
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// max(nav 130, loss 130 + 10, 136 - 15 + 25 = 146)
+	EXPECT_NEAR(out.altitude, kTerrain + 46.f, 0.1f);
+}
+
+TEST_F(TerrainFollowerTest, AcquisitionJumpRestarts)
+{
+	run(1.5f);
+	// 0.2 x 50 m = 10 m
+	setHeight(42.f);
+	EXPECT_EQ(run(1.98f).state, TF::STANDBY);
+	EXPECT_EQ(run(0.1f).state, TF::FOLLOW);
+}
+
+TEST_F(TerrainFollowerTest, SingleLowSampleWhileClosing)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 200.f;
+	float h = 30.f;
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::STANDBY);
+
+	// closing at 1 m/s trips the closing rule under 8 + 1 x 3 = 11 m, so stop at 15 m
+	for (int i = 0; h > 15.f; i++) {
+		h -= 1.f * kDt;
+		setHeight(i == 600 ? 5.f : h);
+		step();
+		ASSERT_NE(out.state, TF::PULL_UP);
+	}
+}
+
+TEST_F(TerrainFollowerTest, RateFromSampleInterval)
+{
+	in.eligible = false;
+	in.ekf_valid = false;
+	float hagl = 40.f;
+	uint64_t t_sample = 0;
+	uint64_t t_next = in.now_us;
+
+	// level flight, ground rising 3.6 m/s, samples at 20 Hz over 50 Hz cycles
+	for (int i = 0; i < static_cast<int>(4.f / kDt); i++) {
+		in.now_us += static_cast<uint64_t>(kDt * 1e6f);
+
+		if (in.now_us >= t_next) {
+			t_sample = t_next;
+			t_next += 50000;
+			hagl = 40.f - 3.6f * static_cast<float>(t_sample - 1000000) * 1e-6f;
+		}
+
+		in.range_time_us = t_sample;
+		in.raw_valid = true;
+		in.hagl_raw = hagl;
+		in.vz_up = 0.f;
+		out = tf.update(in, p);
+	}
+
+	EXPECT_NEAR(out.terrain_rate, 3.6f, 0.3f);
 }

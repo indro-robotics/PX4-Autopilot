@@ -196,6 +196,11 @@ public:
 	float get_acceptance_radius();
 
 	/**
+	 * Turn radius at the terrain follower's bank limit while it sets the altitude in Mission, else NAN
+	 */
+	float get_terrain_follow_turn_radius();
+
+	/**
 	 * Get the altitude acceptance radius
 	 *
 	 * @return the distance from the target altitude before considering the waypoint reached
@@ -389,10 +394,12 @@ private:
 	param_t _handle_back_trans_dec_mss{PARAM_INVALID};
 	param_t _handle_mpc_jerk_auto{PARAM_INVALID};
 	param_t _handle_mpc_acc_hor{PARAM_INVALID};
+	param_t _handle_fw_tf_bank{PARAM_INVALID};
 
 	float _param_back_trans_dec_mss{0.f};
 	float _param_mpc_jerk_auto{4.f}; 	/**< initialized with the default jerk auto value to prevent division by 0 if the parameter is accidentally set to 0 */
 	float _param_mpc_acc_hor{3.f};		/**< initialized with the default horizontal acc value to prevent division by 0 if the parameter is accidentally set to 0 */
+	float _param_fw_tf_bank{35.f};
 
 	float _cruising_speed_current_mode{-1.0f};
 	float _mission_throttle{NAN};

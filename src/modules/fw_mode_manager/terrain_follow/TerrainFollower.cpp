@@ -48,10 +48,26 @@ static constexpr float kUplift = 1.5f;
 static constexpr float kUpliftExit = 2.f;
 static constexpr float kFaultClimb = 40.f;
 static constexpr float kCosTiltMax = 0.766f;
+static constexpr float kStuckAlt = 1.f;
+static constexpr float kJump = 0.2f;
+static constexpr float kClearanceMin = 7.f;
 
 float TerrainFollower::rawHagl(float range, float cos_tilt)
 {
 	return cos_tilt > kCosTiltMax ? range * cos_tilt : NAN;
+}
+
+bool TerrainFollower::StuckCheck::live(float d, float alt_amsl)
+{
+	// false while distance is NAN
+	const bool repeated = fabsf(d - distance) <= 0.f;
+
+	if (!repeated) {
+		distance = d;
+		alt = alt_amsl;
+	}
+
+	return !repeated || fabsf(alt_amsl - alt) <= kStuckAlt;
 }
 
 bool TerrainFollower::latchFollow(bool bits_set, bool airborne)
@@ -70,11 +86,13 @@ bool TerrainFollower::latchFollow(bool bits_set, bool airborne)
 TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p)
 {
 	if (in.raw_valid) {
-		if (_t_valid_since == 0) {
+		// a jump during acquisition marks a sensor that has not settled, so the 2 s count starts again
+		if (_t_valid_since == 0 || (!_range_ok && fabsf(in.hagl_raw - _raw_prev) > kJump * in.range_max)) {
 			_t_valid_since = in.now_us;
 		}
 
 		_t_last_valid = in.now_us;
+		_raw_prev = in.hagl_raw;
 		_range_max = in.range_max;
 
 	} else if (in.now_us > _t_last_valid + kLossTime) {
@@ -83,35 +101,57 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 	_range_ok = _t_valid_since != 0 && (_range_ok || in.now_us >= _t_valid_since + kReacquireTime);
 
-	const bool have_used = in.raw_valid || _have_terrain;
 	float used = NAN;
+	float interval = 0.f;
+	bool sampled = false;
 
 	if (in.raw_valid) {
 		used = (in.ekf_valid && in.hagl_ekf < in.hagl_raw) ? in.hagl_ekf : in.hagl_raw;
 
+		// per sample: a per-cycle derivative of a 20 Hz sensor reads at most 2/5 of the clip
+		if (in.range_time_us != _t_sample) {
+			interval = (_t_sample != 0 && in.range_time_us > _t_sample) ? (in.range_time_us - _t_sample) * 1e-6f : 0.f;
+			_t_sample = in.range_time_us;
+			sampled = true;
+		}
+
 	} else if (_have_terrain) {
 		used = in.alt_amsl - _terrain;
+		interval = (_t_sample == 0) ? in.dt : 0.f;
+		_t_sample = 0;
+		sampled = true;
 	}
 
-	if (have_used) {
-		if (_have_terrain && in.dt > 0.f) {
+	if (sampled) {
+		if (_have_terrain && interval > 0.f) {
 			// a step reaches the follow law through the height error, not as a rate spike
-			const float closure = math::constrain((_used - used) / in.dt, -kRateMax, kRateMax);
-			const float a = in.dt / (kFilterTime + in.dt);
+			const float closure = math::constrain((_used - used) / interval, -kRateMax, kRateMax);
+			const float a = interval / (kFilterTime + interval);
 			_closure += a * (closure - _closure);
 			_terrain_rate += a * (in.vz_up + closure - _terrain_rate);
 		}
 
 		_used = used;
-		_terrain = in.alt_amsl - used;
 		_have_terrain = true;
 	}
 
-	const float terrain_rate = math::constrain(_terrain_rate, -kRateMax, kRateMax);
-	const float hagl_min = p.floor + p.sink * p.ttg + 1.f;
-	const float hagl_cmd = math::max(hagl_min, math::min(p.hagl, kRangeUse * _range_max * cosf(p.bank)));
+	if (_have_terrain) {
+		_terrain = in.alt_amsl - used;
+	}
+
 	const float uplift = kUplift * p.floor;
-	const bool active = in.eligible && (in.follow_wanted || in.guard);
+
+	if (in.landing) {
+		_released = false;
+
+	} else if (_range_ok && used >= uplift + kUpliftExit) {
+		_released = true;
+	}
+
+	const float terrain_rate = math::constrain(_terrain_rate, -kRateMax, kRateMax);
+	const float hagl_min = p.floor + math::max(p.sink * p.ttg + 1.f, kClearanceMin);
+	const float hagl_cmd = math::max(hagl_min, math::min(p.hagl, kRangeUse * _range_max * cosf(p.bank)));
+	const bool active = in.eligible && !in.landing && (in.follow_wanted || in.guard);
 	const bool lost = !_range_ok;
 
 	Output out{};
@@ -129,10 +169,10 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		break;
 
 	case STANDBY:
-		if (in.follow_wanted && !lost) {
+		if (_released && in.follow_wanted && !lost) {
 			_state = FOLLOW;
 
-		} else if (in.guard && !in.follow_wanted && !lost && in.nav_alt < _terrain + uplift) {
+		} else if (_released && in.guard && !in.follow_wanted && !lost && in.nav_alt < _terrain + uplift) {
 			_state = UPLIFT;
 		}
 
@@ -196,7 +236,9 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		break;
 	}
 
-	if (_state != STANDBY && _state != FOLLOW && _state != UPLIFT) {
+	const bool checked = _state == STANDBY || _state == FOLLOW || _state == UPLIFT || _state == RANGE_LOST;
+
+	if (!checked || !_released) {
 		_t_low = 0;
 
 	} else if (in.raw_valid) {
@@ -230,7 +272,19 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 	if (_state == FOLLOW || _state == UPLIFT) {
 		const float target = (_state == FOLLOW) ? hagl_cmd : uplift;
-		const float rate = math::constrain(terrain_rate + (target - used) / p.tc, -p.sink, p.climb_max);
+		float rate = terrain_rate + (target - used) / p.tc;
+
+		if (_state == FOLLOW) {
+			// a wrongly long range cannot take the aircraft further than FW_TF_MAXDN under the plan
+			const float bound = (in.nav_alt - p.max_down - in.alt_amsl) / p.tc;
+
+			if (bound > rate) {
+				rate = bound;
+				out.descent_limited = true;
+			}
+		}
+
+		rate = math::constrain(rate, -p.sink, p.climb_max);
 		out.use_rate = true;
 		out.height_rate = in.raw_valid ? rate : math::max(rate, 0.f);
 
@@ -241,6 +295,10 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 
 	} else if (_state == RANGE_LOST) {
 		out.altitude = math::max(in.nav_alt, _loss_alt + p.loss_up);
+
+		if (in.raw_valid) {
+			out.altitude = math::max(out.altitude, in.alt_amsl - used + (in.follow_wanted ? hagl_cmd : uplift));
+		}
 	}
 
 	return out;

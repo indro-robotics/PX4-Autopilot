@@ -402,6 +402,7 @@ private:
 	float _min_current_sp_distance_xy{FLT_MAX};
 
 	TerrainFollower _terrain_follower;
+	TerrainFollower::StuckCheck _range_stuck[ORB_MULTI_MAX_INSTANCES] {};
 	distance_sensor_s _range_samples[ORB_MULTI_MAX_INSTANCES] {};
 	float _cos_tilt{1.f};
 	float _range_long_floor{0.f};
@@ -411,12 +412,14 @@ private:
 	bool _tf_airborne{false};
 	bool _tf_announced{false};
 	bool _tf_limited{false};
+	bool _tf_descent_limited{false};
 	uint8_t _tf_state{TerrainFollower::OFF};
 	uint16_t _tf_loss_count{0};
 	hrt_abstime _tf_status_time{0};
 	hrt_abstime _tf_wait_due{0};
 
-	void applyTerrainFollow(const float dt, const float nav_alt, fixed_wing_longitudinal_setpoint_s *sp);
+	void applyTerrainFollow(const float dt, const float nav_alt, fixed_wing_longitudinal_setpoint_s *sp,
+				bool close_to_circle);
 
 #ifdef CONFIG_FIGURE_OF_EIGHT
 	/* Loitering */
@@ -913,7 +916,8 @@ private:
 		(ParamFloat<px4::params::FW_TF_SINK>) _param_fw_tf_sink,
 		(ParamFloat<px4::params::FW_TF_BANK>) _param_fw_tf_bank,
 		(ParamFloat<px4::params::FW_TF_LOSS_UP>) _param_fw_tf_loss_up,
-		(ParamFloat<px4::params::FW_TF_TTG>) _param_fw_tf_ttg
+		(ParamFloat<px4::params::FW_TF_TTG>) _param_fw_tf_ttg,
+		(ParamFloat<px4::params::FW_TF_MAXDN>) _param_fw_tf_maxdn
 	)
 };
 

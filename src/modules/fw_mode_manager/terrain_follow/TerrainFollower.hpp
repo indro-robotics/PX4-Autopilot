@@ -34,6 +34,7 @@
 
 #pragma once
 
+#include <math.h>
 #include <stdint.h>
 
 class TerrainFollower
@@ -42,12 +43,19 @@ public:
 	enum State : uint8_t { OFF, STANDBY, FOLLOW, UPLIFT, PULL_UP, RANGE_LOST, FAULT };
 	enum Nav : uint8_t { NAV_OTHER, NAV_HOLD, NAV_MISSION, NAV_RETURN };
 
-	struct Input  { uint64_t now_us; float dt; bool eligible, follow_wanted, guard, in_return;
+	struct Input  { uint64_t now_us, range_time_us; float dt; bool eligible, landing, follow_wanted, guard, in_return;
 			float alt_amsl, vz_up, nav_alt; bool raw_valid; float hagl_raw, range_max;
 			bool ekf_valid; float hagl_ekf; };
-	struct Params { float hagl, floor, tc, sink, climb_max, loss_up, ttg, bank; };
+	struct Params { float hagl, floor, tc, sink, climb_max, loss_up, ttg, bank, max_down; };
 	struct Output { uint8_t state; bool use_rate; float height_rate, altitude; bool min_airspeed,
-			cap_bank, request_return; float hagl_cmd, hagl_used, terrain_rate; };
+			cap_bank, request_return, descent_limited; float hagl_cmd, hagl_used, terrain_rate; };
+
+	// One per sensor instance: a distance repeated across more than 1 m of altitude change is a frozen sensor.
+	struct StuckCheck {
+		float distance{NAN};
+		float alt{NAN};
+		bool live(float d, float alt_amsl);
+	};
 
 	Output update(const Input &in, const Params &p);
 
@@ -58,11 +66,6 @@ public:
 	bool rangeOk() const { return _range_ok; }
 
 	static bool ownsAltitude(uint8_t state) { return state >= FOLLOW && state <= RANGE_LOST; }
-
-	static bool eligible(bool flying_auto, bool landing_item, Nav nav, bool past_land_start)
-	{
-		return flying_auto && !landing_item && nav != NAV_OTHER && !(nav == NAV_MISSION && past_land_start);
-	}
 
 	static bool followBit(int32_t en, Nav nav)
 	{
@@ -75,16 +78,19 @@ private:
 	uint8_t _state{OFF};
 	uint8_t _resume{STANDBY};
 	bool _range_ok{false};
+	bool _released{false};
 	bool _have_terrain{false};
 	bool _latched{false};
 	bool _bits_prev{false};
 	bool _return_sent{false};
+	uint64_t _t_sample{0};
 	uint64_t _t_valid_since{0};
 	uint64_t _t_last_valid{0};
 	uint64_t _t_low{0};
 	uint64_t _t_recover{0};
 	uint64_t _t_under{0};
 	float _range_max{0.f};
+	float _raw_prev{0.f};
 	float _terrain{0.f};
 	float _used{0.f};
 	float _terrain_rate{0.f};

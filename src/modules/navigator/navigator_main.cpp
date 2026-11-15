@@ -104,6 +104,7 @@ Navigator::Navigator() :
 
 	_handle_mpc_jerk_auto = param_find("MPC_JERK_AUTO");
 	_handle_mpc_acc_hor = param_find("MPC_ACC_HOR");
+	_handle_fw_tf_bank = param_find("FW_TF_BANK");
 
 	_local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
 	_mission_sub = orb_subscribe(ORB_ID(mission));
@@ -139,6 +140,10 @@ void Navigator::params_update()
 
 	if (_handle_mpc_acc_hor != PARAM_INVALID) {
 		param_get(_handle_mpc_acc_hor, &_param_mpc_acc_hor);
+	}
+
+	if (_handle_fw_tf_bank != PARAM_INVALID) {
+		param_get(_handle_fw_tf_bank, &_param_fw_tf_bank);
 	}
 
 	_mission.set_command_timeout(_param_mis_command_tout.get());
@@ -1133,14 +1138,7 @@ float Navigator::get_altitude_acceptance_radius()
 		const position_setpoint_s &curr_sp = get_position_setpoint_triplet()->current;
 		const position_setpoint_s &next_sp = get_position_setpoint_triplet()->next;
 
-		_terrain_follow_status_sub.update();
-		const terrain_follow_status_s &tf = _terrain_follow_status_sub.get();
-
-		if (hrt_elapsed_time(&tf.timestamp) < 1_s && tf.state >= terrain_follow_status_s::STATE_FOLLOW
-		    && tf.state <= terrain_follow_status_s::STATE_RANGE_LOST) {
-			return FLT_MAX;
-
-		} else if ((PX4_ISFINITE(curr_sp.alt_acceptance_radius) && curr_sp.alt_acceptance_radius > FLT_EPSILON)) {
+		if ((PX4_ISFINITE(curr_sp.alt_acceptance_radius) && curr_sp.alt_acceptance_radius > FLT_EPSILON)) {
 			return curr_sp.alt_acceptance_radius;
 
 		} else if (!force_vtol() && next_sp.type == position_setpoint_s::SETPOINT_TYPE_LAND && next_sp.valid) {
@@ -1165,6 +1163,22 @@ float Navigator::get_altitude_acceptance_radius()
 
 		return alt_acceptance_radius;
 	}
+}
+
+float Navigator::get_terrain_follow_turn_radius()
+{
+	_terrain_follow_status_sub.update();
+	const terrain_follow_status_s &tf = _terrain_follow_status_sub.get();
+
+	if (_vstatus.vehicle_type != vehicle_status_s::VEHICLE_TYPE_FIXED_WING
+	    || _vstatus.nav_state != vehicle_status_s::NAVIGATION_STATE_AUTO_MISSION
+	    || hrt_elapsed_time(&tf.timestamp) > 1_s
+	    || tf.state < terrain_follow_status_s::STATE_FOLLOW || tf.state > terrain_follow_status_s::STATE_RANGE_LOST) {
+		return NAN;
+	}
+
+	const float ground_speed_sq = _local_pos.vx * _local_pos.vx + _local_pos.vy * _local_pos.vy;
+	return ground_speed_sq / (CONSTANTS_ONE_G * tanf(math::radians(_param_fw_tf_bank)));
 }
 
 void Navigator::reset_triplets()

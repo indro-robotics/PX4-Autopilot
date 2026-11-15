@@ -316,6 +316,14 @@ MissionBlock::is_mission_item_reached_or_completed()
 
 			float alt_acc_rad_m = _navigator->get_altitude_acceptance_radius();
 
+			// the terrain follower sets the altitude and caps the bank, which widens the turn onto the waypoint
+			const float terrain_follow_turn_radius = _navigator->get_terrain_follow_turn_radius();
+
+			if (PX4_ISFINITE(terrain_follow_turn_radius)) {
+				acceptance_radius += terrain_follow_turn_radius;
+				alt_acc_rad_m = FLT_MAX;
+			}
+
 			/* for vtol back transition calculate acceptance radius based on time and ground speed */
 			if (_mission_item.vtol_back_transition
 			    && _navigator->get_vstatus()->vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING) {

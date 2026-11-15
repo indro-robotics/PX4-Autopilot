@@ -639,8 +639,6 @@ PARAM_DEFINE_INT32(FW_TF_EN, 0);
 /**
  * Terrain follow height above ground
  *
- * Limited to 0.75 x the sensor range x cos(FW_TF_BANK) and to at least FW_TF_FLOOR + FW_TF_SINK x FW_TF_TTG + 1.
- *
  * @unit m
  * @min 10
  * @max 100
@@ -652,8 +650,6 @@ PARAM_DEFINE_FLOAT(FW_TF_HAGL, 25.f);
 
 /**
  * Terrain follow floor
- *
- * Height above ground under which the pull-up acts; the guard uplift holds 1.5 x this height.
  *
  * @unit m
  * @min 3
@@ -691,8 +687,6 @@ PARAM_DEFINE_FLOAT(FW_TF_SINK, 2.f);
 /**
  * Terrain follow bank limit
  *
- * Bank limit while the follower sets the altitude.
- *
  * @unit deg
  * @min 20
  * @max 40
@@ -705,8 +699,6 @@ PARAM_DEFINE_FLOAT(FW_TF_BANK, 35.f);
 /**
  * Terrain follow climb on range loss
  *
- * Climb above the altitude at range loss, unless the planned altitude is higher.
- *
  * @unit m
  * @min 0
  * @max 50
@@ -717,9 +709,7 @@ PARAM_DEFINE_FLOAT(FW_TF_BANK, 35.f);
 PARAM_DEFINE_FLOAT(FW_TF_LOSS_UP, 10.f);
 
 /**
- * Terrain follow time to floor
- *
- * Time to reach FW_TF_FLOOR at the current closing rate that starts the pull-up; 0 disables it.
+ * Terrain follow time to floor that starts the pull-up, 0 disables
  *
  * @unit s
  * @min 0
@@ -729,3 +719,15 @@ PARAM_DEFINE_FLOAT(FW_TF_LOSS_UP, 10.f);
  * @group FW Terrain Follow
  */
 PARAM_DEFINE_FLOAT(FW_TF_TTG, 3.f);
+
+/**
+ * Terrain follow descent limit under the planned altitude
+ *
+ * @unit m
+ * @min 0
+ * @max 100
+ * @decimal 1
+ * @increment 1
+ * @group FW Terrain Follow
+ */
+PARAM_DEFINE_FLOAT(FW_TF_MAXDN, 10.f);
