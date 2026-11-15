@@ -34,3 +34,6 @@
 px4_add_library(launchdetection
 	LaunchDetector.cpp
 )
+
+px4_add_functional_gtest(SRC LaunchDetectorTest.cpp LINKLIBS launchdetection)
+px4_add_functional_gtest(SRC LaunchCourseTest.cpp LINKLIBS geo)

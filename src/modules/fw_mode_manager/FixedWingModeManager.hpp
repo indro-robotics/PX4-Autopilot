@@ -40,6 +40,7 @@
 #ifndef FIXEDWINGMODEMANAGER_HPP_
 #define FIXEDWINGMODEMANAGER_HPP_
 
+#include "launchdetection/LaunchCourse.hpp"
 #include "launchdetection/LaunchDetector.h"
 #include "runway_takeoff/RunwayTakeoff.h"
 #include "ControllerConfigurationHandler.hpp"
@@ -77,6 +78,7 @@
 #include <uORB/topics/position_controller_landing_status.h>
 #include <uORB/topics/position_controller_status.h>
 #include <uORB/topics/position_setpoint_triplet.h>
+#include <uORB/topics/sensor_gps.h>
 #include <uORB/topics/tecs_status.h>
 #include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
@@ -297,6 +299,16 @@ private:
 
 	// true if a launch, specifically using the launch detector, has been detected
 	bool _launch_detected{false};
+
+	// set by an aborted launch, cleared only by a disarm: the motor stays at idle in every mode
+	bool _launch_aborted{false};
+
+	// set once above FW_TKO_PMIN_ALT, so a motor that stops later is not pitched up again on the way down
+	bool _takeoff_floor_released{false};
+
+	uORB::Subscription _launch_attitude_sub{ORB_ID(vehicle_attitude)};
+	uORB::Subscription _launch_gps_sub{ORB_ID(vehicle_gps_position)};
+	LaunchCourse _launch_course;
 
 	// [deg] global position of the vehicle at the time launch is detected (using launch detector) or takeoff is started (runway)
 	Vector2d _takeoff_init_position{0, 0};
@@ -895,6 +907,9 @@ private:
 		(ParamFloat<px4::params::FW_TKO_AIRSPD>) _param_fw_tko_airspd,
 		(ParamFloat<px4::params::RWTO_PSP>) _param_rwto_psp,
 		(ParamBool<px4::params::FW_LAUN_DETCN_ON>) _param_fw_laun_detcn_on,
+		(ParamFloat<px4::params::FW_TKO_SPDWT>) _param_fw_tko_spdwt,
+		(ParamFloat<px4::params::FW_TKO_PMIN_ALT>) _param_fw_tko_pmin_alt,
+		(ParamFloat<px4::params::FW_LAUN_CRS_DST>) _param_fw_laun_crs_dst,
 		(ParamFloat<px4::params::FW_AIRSPD_MAX>) _param_fw_airspd_max,
 		(ParamFloat<px4::params::FW_AIRSPD_MIN>) _param_fw_airspd_min,
 		(ParamFloat<px4::params::FW_AIRSPD_TRIM>) _param_fw_airspd_trim,
