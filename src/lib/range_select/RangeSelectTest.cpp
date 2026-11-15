@@ -326,6 +326,58 @@ TEST(RangeSelectTest, NothingGoodPassesTheNewestFreshSample)
 	EXPECT_EQ(pick(none, 2, floor_state).used, -1);
 }
 
+static Selection pickSplit(const distance_sensor_s *s, int n, float &floor_state)
+{
+	return selectDownwardRange(s, n, STALE, floor_state, true);
+}
+
+TEST(RangeSelectTest, FrozenHighLidarPullsTheMeanOfTwo)
+{
+	// lidar 0 frozen at 25 m over ground that rose 10 m, lidar 1 live at 15 m
+	const distance_sensor_s s[] {sample(25.f, 50.f, NOW - 30'000), sample(15.f, 50.f, NOW - 10'000)};
+	float floor_state = 0.f;
+	EXPECT_FLOAT_EQ(pick(s, 2, floor_state).distance, 20.f);
+	const Selection sel = pickSplit(s, 2, floor_state);
+	EXPECT_EQ(sel.count, 1);
+	EXPECT_EQ(sel.used, 1);
+	EXPECT_FLOAT_EQ(sel.distance, 15.f);
+	EXPECT_EQ(sel.timestamp, NOW - 10'000);
+}
+
+TEST(RangeSelectTest, FrozenHighLidarWinsOverRadar)
+{
+	// lidar frozen at 25 m, radar live at 15 m: the shortest group wins unless the split rule acts
+	const distance_sensor_s s[] {sample(25.f, 50.f), sample(15.f, 100.f, NOW - 20'000)};
+	float floor_state = 0.f;
+	EXPECT_FLOAT_EQ(pick(s, 2, floor_state).distance, 25.f);
+	const Selection sel = pickSplit(s, 2, floor_state);
+	EXPECT_EQ(sel.used, 1);
+	EXPECT_FLOAT_EQ(sel.distance, 15.f);
+	EXPECT_EQ(sel.timestamp, NOW - 20'000);
+	EXPECT_FLOAT_EQ(sel.range_max, 100.f);
+}
+
+TEST(RangeSelectTest, SplitOfTwoMetresKeepsTheGroup)
+{
+	float floor_state = 0.f;
+	const distance_sensor_s lidars[] {sample(20.f, 50.f), sample(22.f, 50.f)};
+	EXPECT_FLOAT_EQ(pickSplit(lidars, 2, floor_state).distance, 21.f);
+	const distance_sensor_s near_radar[] {sample(30.f, 50.f), sample(28.f, 100.f)};
+	EXPECT_FLOAT_EQ(pickSplit(near_radar, 2, floor_state).distance, 30.f);
+	const distance_sensor_s far_radar[] {sample(30.f, 50.f), sample(27.9f, 100.f)};
+	EXPECT_FLOAT_EQ(pickSplit(far_radar, 2, floor_state).distance, 27.9f);
+}
+
+TEST(RangeSelectTest, SplitIgnoresSamplesThatAreNotGood)
+{
+	float floor_state = 0.f;
+	// a stale, quality 0 or out of range reading never wins on the split
+	const distance_sensor_s s[] {sample(25.f, 50.f), sample(5.f, 50.f, STALE), sample(6.f, 50.f, NOW - 10'000, 0), sample(0.05f, 50.f)};
+	const Selection sel = pickSplit(s, 4, floor_state);
+	EXPECT_EQ(sel.used, 0);
+	EXPECT_FLOAT_EQ(sel.distance, 25.f);
+}
+
 TEST(RangeSelectCanary, WrongMeanIsCaught)
 {
 	const distance_sensor_s s[] {sample(20.f, 50.f), sample(21.f, 50.f)};

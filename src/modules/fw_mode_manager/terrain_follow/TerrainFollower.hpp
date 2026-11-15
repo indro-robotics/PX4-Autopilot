@@ -43,18 +43,29 @@ public:
 	enum State : uint8_t { OFF, STANDBY, FOLLOW, UPLIFT, PULL_UP, RANGE_LOST, FAULT };
 	enum Nav : uint8_t { NAV_OTHER, NAV_HOLD, NAV_MISSION, NAV_RETURN };
 
-	struct Input  { uint64_t now_us, range_time_us; float dt; bool eligible, landing, follow_wanted, guard, in_return;
+	struct Input  { uint64_t now_us, range_time_us; float dt; bool eligible, landing, follow_wanted, guard, in_return, no_setpoint;
 			float alt_amsl, vz_up, nav_alt; bool raw_valid; float hagl_raw, range_max;
 			bool ekf_valid; float hagl_ekf; };
 	struct Params { float hagl, floor, tc, sink, climb_max, loss_up, ttg, bank, max_down; };
 	struct Output { uint8_t state; bool use_rate; float height_rate, altitude; bool min_airspeed,
 			cap_bank, request_return, descent_limited; float hagl_cmd, hagl_used, terrain_rate; };
 
-	// One per sensor instance: a distance repeated across more than 1 m of altitude change is a frozen sensor.
+	// One per sensor instance: a distance repeated across more than 1 m of altitude change or over 10 new samples is a frozen sensor.
 	struct StuckCheck {
 		float distance{NAN};
 		float alt{NAN};
-		bool live(float d, float alt_amsl);
+		uint64_t time{0};
+		uint8_t samples{0};
+		bool live(float d, float alt_amsl, uint64_t sample_time);
+	};
+
+	// The approach circle and every leg after it while the mission index stays past DO_LAND_START.
+	struct ApproachLatch {
+		double lat{NAN};
+		double lon{NAN};
+		bool started_inside{false};
+		bool latched{false};
+		bool update(bool past_land_start, bool fresh, bool close, double sp_lat, double sp_lon);
 	};
 
 	Output update(const Input &in, const Params &p);
@@ -83,6 +94,8 @@ private:
 	bool _latched{false};
 	bool _bits_prev{false};
 	bool _return_sent{false};
+	bool _limit_held{false};
+	uint64_t _t_setpoint{0};
 	uint64_t _t_sample{0};
 	uint64_t _t_valid_since{0};
 	uint64_t _t_last_valid{0};

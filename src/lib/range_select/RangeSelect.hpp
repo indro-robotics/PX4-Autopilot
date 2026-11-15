@@ -49,7 +49,9 @@ struct Selection {
 };
 
 // long_floor is hysteresis state: one per caller, 0 before the first call
-inline Selection selectDownwardRange(const distance_sensor_s *samples, int n, uint64_t stale_before, float &long_floor)
+// lowest_on_split: when two good samples differ by more than 2 m the lowest one is used alone
+inline Selection selectDownwardRange(const distance_sensor_s *samples, int n, uint64_t stale_before, float &long_floor,
+				     bool lowest_on_split = false)
 {
 	const auto fresh = [&](const distance_sensor_s & s) {
 		return (s.timestamp > stale_before) && (s.orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING);
@@ -63,6 +65,8 @@ inline Selection selectDownwardRange(const distance_sensor_s *samples, int n, ui
 
 	Selection sel{};
 	float shortest = INFINITY;
+	int lowest = -1;
+	float highest = -INFINITY;
 
 	for (int i = 0; i < n; i++) {
 		if (fresh(samples[i])) {
@@ -74,6 +78,11 @@ inline Selection selectDownwardRange(const distance_sensor_s *samples, int n, ui
 
 			if (good(samples[i])) {
 				shortest = fminf(shortest, samples[i].max_distance);
+				highest = fmaxf(highest, samples[i].current_distance);
+
+				if ((lowest < 0) || (samples[i].current_distance < samples[lowest].current_distance)) {
+					lowest = i;
+				}
 			}
 		}
 	}
@@ -105,6 +114,14 @@ inline Selection selectDownwardRange(const distance_sensor_s *samples, int n, ui
 		sel.distance = sum / sel.count;
 		sel.timestamp = time_sum / sel.count;
 		long_floor = shorter_left_out ? shortest : 0.f;
+
+		// a reading frozen high is outvoted by any other good reading, whatever group it belongs to
+		if (lowest_on_split && (highest - samples[lowest].current_distance > 2.f)) {
+			sel.used = lowest;
+			sel.count = 1;
+			sel.distance = samples[lowest].current_distance;
+			sel.timestamp = samples[lowest].timestamp;
+		}
 
 	} else {
 		long_floor = 0.f;

@@ -49,15 +49,20 @@ static constexpr float kUpliftExit = 2.f;
 static constexpr float kFaultClimb = 40.f;
 static constexpr float kCosTiltMax = 0.766f;
 static constexpr float kStuckAlt = 1.f;
+static constexpr uint8_t kStuckSamples = 10;
+static constexpr uint64_t kReturnLossTime = 30000000;
+static constexpr double kSameCircle = 1e-7;
 static constexpr float kJump = 0.2f;
 static constexpr float kClearanceMin = 7.f;
+static constexpr uint64_t kSetpointGap = 500000;
+static constexpr float kLimitBand = 1.f;
 
 float TerrainFollower::rawHagl(float range, float cos_tilt)
 {
 	return cos_tilt > kCosTiltMax ? range * cos_tilt : NAN;
 }
 
-bool TerrainFollower::StuckCheck::live(float d, float alt_amsl)
+bool TerrainFollower::StuckCheck::live(float d, float alt_amsl, uint64_t sample_time)
 {
 	// false while distance is NAN
 	const bool repeated = fabsf(d - distance) <= 0.f;
@@ -65,9 +70,30 @@ bool TerrainFollower::StuckCheck::live(float d, float alt_amsl)
 	if (!repeated) {
 		distance = d;
 		alt = alt_amsl;
+		samples = 1;
+
+	} else if (sample_time != time && samples < kStuckSamples) {
+		// a sample read again on the next cycle is not a new sample
+		samples++;
 	}
 
-	return !repeated || fabsf(alt_amsl - alt) <= kStuckAlt;
+	time = sample_time;
+	return !repeated || (samples < kStuckSamples && fabsf(alt_amsl - alt) <= kStuckAlt);
+}
+
+bool TerrainFollower::ApproachLatch::update(bool past_land_start, bool fresh, bool close, double sp_lat, double sp_lon)
+{
+	// a loiter republished with a new altitude is the same circle
+	if (!(fabs(sp_lat - lat) <= kSameCircle && fabs(sp_lon - lon) <= kSameCircle)) {
+		lat = sp_lat;
+		lon = sp_lon;
+		// a loiter that starts around the aircraft is a Return climb or a Hold, not the approach
+		started_inside = close;
+	}
+
+	// a setpoint older than the mission index belongs to the item before it
+	latched = past_land_start && (latched || (close && fresh && !started_inside));
+	return latched;
 }
 
 bool TerrainFollower::latchFollow(bool bits_set, bool airborne)
@@ -151,7 +177,13 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 	const float terrain_rate = math::constrain(_terrain_rate, -kRateMax, kRateMax);
 	const float hagl_min = p.floor + math::max(p.sink * p.ttg + 1.f, kClearanceMin);
 	const float hagl_cmd = math::max(hagl_min, math::min(p.hagl, kRangeUse * _range_max * cosf(p.bank)));
-	const bool active = in.eligible && !in.landing && (in.follow_wanted || in.guard);
+	if (!in.no_setpoint) {
+		_t_setpoint = in.now_us;
+	}
+
+	// a mode switch publishes an IDLE setpoint for a few cycles, which must not end RANGE_LOST, UPLIFT or PULL_UP
+	const bool eligible = in.eligible || (in.no_setpoint && in.now_us < _t_setpoint + kSetpointGap);
+	const bool active = eligible && !in.landing && (in.follow_wanted || in.guard);
 	const bool lost = !_range_ok;
 
 	Output out{};
@@ -196,6 +228,10 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 	case RANGE_LOST:
 		if (!lost) {
 			_state = in.follow_wanted ? FOLLOW : STANDBY;
+
+		} else if (in.in_return && in.now_us >= _t_last_valid + kReturnLossTime) {
+			// the loss climb holds the Return above its approach altitude, so the landing would never start
+			_state = FAULT;
 		}
 
 		break;
@@ -271,17 +307,23 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 	out.cap_bank = ownsAltitude(_state);
 
 	if (_state == FOLLOW || _state == UPLIFT) {
-		const float target = (_state == FOLLOW) ? hagl_cmd : uplift;
+		const float target = (_state == FOLLOW) ? hagl_cmd : math::max(uplift, in.nav_alt - _terrain);
 		float rate = terrain_rate + (target - used) / p.tc;
 
 		if (_state == FOLLOW) {
 			// a wrongly long range cannot take the aircraft further than FW_TF_MAXDN under the plan
-			const float bound = (in.nav_alt - p.max_down - in.alt_amsl) / p.tc;
+			const float limit = in.nav_alt - p.max_down;
+			const float bound = (limit - in.alt_amsl) / p.tc;
+			const bool at_limit = in.alt_amsl <= limit + kLimitBand;
 
 			if (bound > rate) {
 				rate = bound;
-				out.descent_limited = true;
+				// one Warning per arrival at the limit altitude, not one per cycle the bound slows the descent
+				out.descent_limited = at_limit && !_limit_held;
+				_limit_held |= at_limit;
 			}
+
+			_limit_held &= at_limit;
 		}
 
 		rate = math::constrain(rate, -p.sink, p.climb_max);

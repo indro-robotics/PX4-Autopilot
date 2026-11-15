@@ -2324,13 +2324,14 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 	if (_mission_sub.update(&mission)) {
 		_mission_land_start = mission.land_start_index;
 		_mission_seq = mission.current_seq;
+		_mission_time = mission.timestamp;
 	}
 
 	int n = 0;
 
 	for (unsigned i = 0; i < _distance_sensor_subs.size(); i++) {
 		if (_distance_sensor_subs[i].copy(&_range_samples[n])) {
-			if (!_range_stuck[i].live(_range_samples[n].current_distance, _current_altitude)) {
+			if (!_range_stuck[i].live(_range_samples[n].current_distance, _current_altitude, _range_samples[n].timestamp)) {
 				_range_samples[n].timestamp = 0;
 			}
 
@@ -2339,7 +2340,7 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 	}
 
 	const range_select::Selection sel = range_select::selectDownwardRange(_range_samples, n,
-					    (now > 250_ms) ? now - 250_ms : 0, _range_long_floor);
+					    (now > 250_ms) ? now - 250_ms : 0, _range_long_floor, true);
 	const bool range_on = sel.count > 0 && _param_ekf2_rng_ctrl.get() != 0;
 	const float hagl_raw = range_on ? TerrainFollower::rawHagl(sel.distance, _cos_tilt) : NAN;
 
@@ -2365,8 +2366,20 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 
 	_tf_airborne = airborne;
 
-	const bool mission_land = (nav == TerrainFollower::NAV_MISSION || nav == TerrainFollower::NAV_RETURN)
-				  && _mission_land_start >= 0 && _mission_seq > _mission_land_start;
+	rtl_status_s rtl_status;
+
+	if (_rtl_status_sub.update(&rtl_status)) {
+		_rtl_type = rtl_status.rtl_type;
+	}
+
+	// a Return to home or a rally point leaves the mission index where the mission stopped
+	const bool mission_landing_return = nav == TerrainFollower::NAV_RETURN
+					    && (_rtl_type == rtl_status_s::RTL_STATUS_TYPE_DIRECT_MISSION_LAND
+						|| _rtl_type == rtl_status_s::RTL_STATUS_TYPE_FOLLOW_MISSION);
+	const bool past_land_start = (nav == TerrainFollower::NAV_MISSION || mission_landing_return)
+				     && _mission_land_start >= 0 && _mission_seq > _mission_land_start;
+	const bool approach = _tf_approach.update(past_land_start, _pos_sp_triplet.timestamp >= _mission_time, close_to_circle,
+				  _pos_sp_triplet.current.lat, _pos_sp_triplet.current.lon);
 
 	TerrainFollower::Input in{};
 	in.now_us = now;
@@ -2375,11 +2388,13 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 	in.eligible = sp && airborne && _control_mode_current == FW_POSCTRL_MODE_AUTO && nav != TerrainFollower::NAV_OTHER;
 	in.landing = _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LAND
 		     || (_position_setpoint_next_valid && _pos_sp_triplet.next.type == position_setpoint_s::SETPOINT_TYPE_LAND)
-		     || _landing_abort_status || (mission_land && close_to_circle);
+		     || _landing_abort_status || approach;
 	in.follow_wanted = latched && TerrainFollower::followBit(en, nav)
 			   && !(nav == TerrainFollower::NAV_MISSION && _mission_land_start >= 0 && _mission_seq >= _mission_land_start);
 	in.guard = en & 4;
 	in.in_return = nav == TerrainFollower::NAV_RETURN;
+	in.no_setpoint = airborne && nav != TerrainFollower::NAV_OTHER
+			 && (!_position_setpoint_current_valid || _pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_IDLE);
 	in.alt_amsl = _current_altitude;
 	in.vz_up = -_local_pos.vz;
 	in.nav_alt = nav_alt;
@@ -2434,12 +2449,10 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 
 	_tf_limited = limited;
 
-	if (out.descent_limited && !_tf_descent_limited) {
+	if (out.descent_limited) {
 		events::send<float>(events::ID("fw_terrain_follow_max_down"), events::Log::Warning,
 				    "Terrain follow descent limited to {1:.0m} under plan", p.max_down);
 	}
-
-	_tf_descent_limited = out.descent_limited;
 
 	if (out.state == TerrainFollower::STANDBY && in.follow_wanted && !_terrain_follower.rangeOk()) {
 		if (now >= _tf_wait_due) {
@@ -2463,6 +2476,10 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 			_tf_loss_count++;
 			events::send<float>(events::ID("fw_terrain_follow_range_lost"), events::Log::Warning, "Range lost, climbing to {1:.0m_v}",
 					    out.altitude - _reference_altitude);
+
+		} else if (out.state == TerrainFollower::FAULT && _tf_state == TerrainFollower::RANGE_LOST) {
+			events::send(events::ID("fw_terrain_follow_lost_off"), events::Log::Warning, "Range lost for 30 s, terrain follow off");
+			_tf_announced = false;
 
 		} else if (out.state == TerrainFollower::FAULT) {
 			events::send(events::ID("fw_terrain_follow_fault"), events::Log::Critical, "Range fault, terrain follow off");

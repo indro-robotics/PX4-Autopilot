@@ -510,21 +510,21 @@ TEST_F(TerrainFollowerTest, FrozenSensorDropped)
 	follow();
 	TF::StuckCheck stuck;
 	const float frozen = 30.f;
-	const float alt0 = in.alt_amsl;
+	const float alt_first = in.alt_amsl - 3.f * kDt;
 	float t_dropped = -1.f;
 
-	// the follower descends on a reading that never changes
+	// a 10 Hz reading frozen while the follower descends at 3 m/s: 1 m of altitude passes in under 10 samples
 	for (int i = 0; i < 200 && out.state != TF::RANGE_LOST; i++) {
-		in.alt_amsl -= 1.f * kDt;
-		in.raw_valid = stuck.live(frozen, in.alt_amsl);
+		in.alt_amsl -= 3.f * kDt;
+		in.raw_valid = stuck.live(frozen, in.alt_amsl, 1000000 + static_cast<uint64_t>(i / 5) * 100000);
 		in.hagl_raw = in.raw_valid ? frozen : NAN;
 		in.ekf_valid = false;
 
 		if (!in.raw_valid && t_dropped < 0.f) {
 			t_dropped = i * kDt;
-			// dropped once the altitude has moved more than 1.0 m, by 1.1 m
-			EXPECT_GT(alt0 - in.alt_amsl, 1.f);
-			EXPECT_LE(alt0 - in.alt_amsl, 1.1f);
+			// dropped once the altitude has moved more than 1.0 m from the first sample, within one 0.06 m cycle
+			EXPECT_GT(alt_first - in.alt_amsl, 1.f);
+			EXPECT_LE(alt_first - in.alt_amsl, 1.f + 3.f * kDt + 1e-3f);
 		}
 
 		step();
@@ -534,6 +534,38 @@ TEST_F(TerrainFollowerTest, FrozenSensorDropped)
 	ASSERT_EQ(out.state, TF::RANGE_LOST);
 	// RANGE_LOST 0.5 s after the last live sample, within one cycle
 	EXPECT_NEAR(static_cast<float>(in.now_us - 1000000) * 1e-6f - 2.1f - t_dropped, 0.5f, 2.f * kDt);
+}
+
+TEST_F(TerrainFollowerTest, FrozenLevelSensorDropped)
+{
+	TF::StuckCheck stuck;
+
+	// level flight, each 50 Hz sample read on two cycles: the 10th bit-identical new sample is dropped
+	for (int k = 1; k <= 10; k++) {
+		const uint64_t t = 5000000 + static_cast<uint64_t>(k) * 20000;
+		const bool first = stuck.live(25.f, 125.f, t);
+		const bool again = stuck.live(25.f, 125.f, t);
+		EXPECT_EQ(first, k < 10) << "sample " << k;
+		EXPECT_EQ(again, k < 10) << "sample " << k;
+	}
+
+	EXPECT_FALSE(stuck.live(25.f, 125.f, 5000000 + 11 * 20000));
+	EXPECT_TRUE(stuck.live(25.01f, 125.f, 5000000 + 12 * 20000));
+}
+
+TEST_F(TerrainFollowerTest, StuckReferenceFollowsDistance)
+{
+	TF::StuckCheck stuck;
+	float alt = 130.f;
+
+	// 3 s down at 1.8 m/s with a changing reading, then one repeat 0.036 m of altitude after its first sample
+	for (int i = 0; i < 150; i++) {
+		alt -= 1.8f * kDt;
+		ASSERT_TRUE(stuck.live(25.f + 0.01f * i, alt, 1000000 + static_cast<uint64_t>(i) * 20000));
+	}
+
+	alt -= 1.8f * kDt;
+	EXPECT_TRUE(stuck.live(25.f + 0.01f * 149, alt, 1000000 + 150 * 20000));
 }
 
 TEST_F(TerrainFollowerTest, LiveSensorOnTrackedSlope)
@@ -548,7 +580,7 @@ TEST_F(TerrainFollowerTest, LiveSensorOnTrackedSlope)
 		alt -= 1.8f * kDt;
 		seed = seed * 1664525u + 1013904223u;
 		const float noise = 0.02f * (static_cast<float>(seed >> 8) / 8388608.f - 1.f);
-		dropped += !stuck.live(25.f + noise, alt);
+		dropped += !stuck.live(25.f + noise, alt, 1000000 + static_cast<uint64_t>(i) * 20000);
 	}
 
 	EXPECT_EQ(dropped, 0);
@@ -559,31 +591,52 @@ TEST_F(TerrainFollowerTest, DescentBounded)
 	in.ekf_valid = false;
 	in.nav_alt = kTerrain + 30.f;
 	p.hagl = 22.f;
-	const float long_by = 15.f;
+	// plan 30 m less FW_TF_MAXDN 10 m
+	const float limit = 30.f - 10.f;
 	float h = 30.f;
 	float v = 0.f;
-	bool limited = false;
+	int warnings = 0;
+	float highest_warned = -INFINITY;
+	bool bounded_above_band = false;
 	float lowest_settled = INFINITY;
 
-	// the range reads 15 m long; TECS modelled as a 1.5 s lag on the height rate
-	for (int i = 0; i < static_cast<int>(90.f / kDt); i++) {
-		in.alt_amsl = kTerrain + h;
-		in.hagl_raw = h + long_by;
-		in.vz_up = v;
-		step();
-		limited |= out.descent_limited;
-		v += ((out.use_rate ? out.height_rate : 0.f) - v) * kDt / 1.5f;
-		h += v * kDt;
+	// the range reads long_by m long; TECS modelled as a 1.5 s lag on the height rate
+	auto fly = [&](float long_by, float seconds) {
+		for (int i = 0; i < static_cast<int>(seconds / kDt); i++) {
+			in.alt_amsl = kTerrain + h;
+			in.hagl_raw = h + long_by;
+			in.vz_up = v;
+			step();
+			bounded_above_band |= h > limit + 1.5f && fabsf(out.height_rate - (limit - h) / p.tc) < 0.01f;
 
-		if (i * kDt > 60.f) {
-			lowest_settled = fminf(lowest_settled, h);
+			if (out.descent_limited) {
+				warnings++;
+				highest_warned = fmaxf(highest_warned, h);
+			}
+
+			v += ((out.use_rate ? out.height_rate : 0.f) - v) * kDt / 1.5f;
+			h += v * kDt;
+
+			if (i * kDt > 60.f) {
+				lowest_settled = fminf(lowest_settled, h);
+			}
 		}
-	}
+	};
 
+	fly(15.f, 90.f);
 	ASSERT_EQ(out.state, TF::FOLLOW);
-	EXPECT_TRUE(limited);
-	// plan 30 m less FW_TF_MAXDN 10 m less 0.1 m
-	EXPECT_GE(lowest_settled, 30.f - 10.f - 0.1f);
+	EXPECT_GE(lowest_settled, limit - 0.1f);
+	// the bound sets the rate more than 1.5 m above the limit, the Warning fires within 1 m of it
+	EXPECT_TRUE(bounded_above_band);
+	EXPECT_EQ(warnings, 1);
+	EXPECT_LE(highest_warned, limit + 1.f);
+	// a true range climbs to the 22 m command, then the long range brings the aircraft back to the limit
+	fly(0.f, 30.f);
+	EXPECT_GT(h, limit + 1.f);
+	EXPECT_EQ(warnings, 1);
+	fly(15.f, 60.f);
+	EXPECT_EQ(warnings, 2);
+	EXPECT_LE(highest_warned, limit + 1.f);
 }
 
 TEST_F(TerrainFollowerTest, NotReleasedAfterReset)
@@ -754,4 +807,247 @@ TEST_F(TerrainFollowerTest, RateFromSampleInterval)
 	}
 
 	EXPECT_NEAR(out.terrain_rate, 3.6f, 0.3f);
+}
+
+TEST_F(TerrainFollowerTest, NotReleasedDuringAcquisition)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 7.f;
+	// 15 m for 1 s, under the 2 s that make range_ok, then 7 m: the 14 m release needs range_ok
+	setHeight(15.f);
+	run(1.f);
+	setHeight(7.f);
+	run(3.f);
+	EXPECT_EQ(out.state, TF::STANDBY);
+	EXPECT_FALSE(out.cap_bank);
+}
+
+TEST_F(TerrainFollowerTest, RangeLostGuardTargetIsUplift)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	in.raw_valid = false;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// lost at 115 m; the beam returns at 10 m over ground at 120 m
+	setHeight(10.f, kTerrain + 20.f);
+	step();
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// max(nav 110, loss 115 + 10, 130 - 10 + 1.5 x 8 = 132)
+	EXPECT_NEAR(out.altitude, kTerrain + 32.f, 0.1f);
+}
+
+TEST_F(TerrainFollowerTest, AcquisitionJumpDownRestarts)
+{
+	run(1.5f);
+	// 30 m to 18 m: a 12 m drop over the 0.2 x 50 m = 10 m jump
+	setHeight(18.f);
+	EXPECT_EQ(run(1.98f).state, TF::STANDBY);
+	EXPECT_EQ(run(0.1f).state, TF::FOLLOW);
+}
+
+TEST_F(TerrainFollowerTest, ClosingEntryReturnsAfterSixSecondsUnder)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 200.f;
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::STANDBY);
+	float h = 30.f;
+
+	// closing at 3 m/s enters PULL_UP above the floor
+	while (out.state != TF::PULL_UP && h > p.floor) {
+		h -= 3.f * kDt;
+		setHeight(h);
+		step();
+	}
+
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	ASSERT_GE(h, p.floor);
+	setHeight(5.f);
+	int requests = 0;
+
+	// 6 s under the floor counts from the first cycle under it
+	for (int i = 0; i < 295; i++) {
+		requests += step().request_return;
+	}
+
+	EXPECT_EQ(requests, 0);
+
+	for (int i = 0; i < 15; i++) {
+		requests += step().request_return;
+	}
+
+	EXPECT_EQ(requests, 1);
+}
+
+TEST_F(TerrainFollowerTest, PullUpHoldsWhileClosing)
+{
+	p.ttg = 0.f;
+	follow();
+	setHeight(7.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	float h = 20.f;
+	setHeight(h);
+	step();
+
+	// above 1.5 x 8 = 12 m for 3 s, still closing at 1 m/s
+	for (int i = 0; i < 150; i++) {
+		h -= 1.f * kDt;
+		setHeight(h);
+		step();
+	}
+
+	EXPECT_EQ(out.state, TF::PULL_UP);
+}
+
+TEST_F(TerrainFollowerTest, UpliftKeepsPlannedHeight)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	setHeight(15.f);
+	in.nav_alt = kTerrain + 10.f;
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	setHeight(10.f);
+	// plan 13.5 m above ground, inside the 12 to 14 m band UPLIFT holds: (13.5 - 10) / 4 = 0.875 m/s
+	in.nav_alt = kTerrain + 13.5f;
+	run(3.f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	EXPECT_NEAR(out.height_rate, 0.875f, 0.05f);
+}
+
+TEST_F(TerrainFollowerTest, ReturnRangeLossFaultsAfterThirtySeconds)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.in_return = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	EXPECT_EQ(run(0.6f).state, TF::RANGE_LOST);
+	// 30 s from the last valid sample
+	EXPECT_EQ(run(29.3f).state, TF::RANGE_LOST);
+	EXPECT_EQ(run(0.2f).state, TF::FAULT);
+	EXPECT_FALSE(out.use_rate);
+	EXPECT_TRUE(isnan(out.altitude));
+	EXPECT_FALSE(out.cap_bank);
+	// range back: off for the rest of the Return
+	setHeight(15.f);
+	EXPECT_EQ(run(5.f).state, TF::FAULT);
+}
+
+TEST_F(TerrainFollowerTest, RangeLostBeforeReturnFaultsInReturn)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	EXPECT_EQ(run(10.f).state, TF::RANGE_LOST);
+	// the Hold to Return switch: 0.06 s of IDLE setpoint, with no altitude
+	in.eligible = false;
+	in.no_setpoint = true;
+	in.in_return = true;
+	in.nav_alt = NAN;
+	EXPECT_EQ(run(0.06f).state, TF::RANGE_LOST);
+	in.eligible = true;
+	in.no_setpoint = false;
+	in.nav_alt = kTerrain + 10.f;
+	// 30 s from the last valid sample: 10 + 0.06 + 19.84 = 29.9 s
+	EXPECT_EQ(run(19.84f).state, TF::RANGE_LOST);
+	EXPECT_EQ(run(0.2f).state, TF::FAULT);
+}
+
+TEST_F(TerrainFollowerTest, UpliftAndPullUpHoldThroughSetpointGap)
+{
+	in.follow_wanted = false;
+	in.guard = true;
+	in.nav_alt = kTerrain + 10.f;
+	setHeight(15.f);
+	run(2.1f);
+	ASSERT_EQ(out.state, TF::UPLIFT);
+	in.eligible = false;
+	in.no_setpoint = true;
+	in.nav_alt = NAN;
+	EXPECT_EQ(run(0.1f).state, TF::UPLIFT);
+	in.eligible = true;
+	in.no_setpoint = false;
+	in.nav_alt = kTerrain + 10.f;
+	EXPECT_EQ(step().state, TF::UPLIFT);
+	setHeight(7.f);
+	run(0.3f);
+	ASSERT_EQ(out.state, TF::PULL_UP);
+	in.eligible = false;
+	in.no_setpoint = true;
+	in.nav_alt = NAN;
+	EXPECT_EQ(run(0.1f).state, TF::PULL_UP);
+}
+
+TEST_F(TerrainFollowerTest, SetpointGapOfHalfSecondTurnsOff)
+{
+	follow();
+	in.eligible = false;
+	in.no_setpoint = true;
+	EXPECT_EQ(run(0.48f).state, TF::FOLLOW);
+	EXPECT_EQ(run(0.04f).state, TF::OFF);
+}
+
+TEST_F(TerrainFollowerTest, MissionRangeLossHoldsPastThirtySeconds)
+{
+	follow();
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	EXPECT_EQ(run(60.f).state, TF::RANGE_LOST);
+}
+
+TEST_F(TerrainFollowerTest, ApproachCircleFlownIntoLatches)
+{
+	TF::ApproachLatch latch;
+	// the approach loiter appears far away, then the aircraft reaches its circle
+	EXPECT_FALSE(latch.update(true, true, false, 45.309, -75.747));
+	EXPECT_TRUE(latch.update(true, true, true, 45.309, -75.747));
+	// the final waypoint leg outside any circle stays a landing context
+	EXPECT_TRUE(latch.update(true, true, false, 45.3092, -75.749));
+	// the mission index back at or below DO_LAND_START ends it
+	EXPECT_FALSE(latch.update(false, true, false, 45.3092, -75.749));
+	EXPECT_FALSE(latch.update(true, true, false, 45.3092, -75.749));
+}
+
+TEST_F(TerrainFollowerTest, LoiterAroundTheAircraftDoesNotLatch)
+{
+	TF::ApproachLatch latch;
+	EXPECT_FALSE(latch.update(true, true, false, 45.309, -75.747));
+	// a Return climb loiter centred where the aircraft is
+	for (int i = 0; i < 100; i++) {
+		EXPECT_FALSE(latch.update(true, true, true, 45.312, -75.7546));
+	}
+
+	// its altitude republished on the same centre
+	EXPECT_FALSE(latch.update(true, true, true, 45.312, -75.7546));
+	// the approach loiter flown into afterwards latches
+	EXPECT_FALSE(latch.update(true, true, false, 45.309, -75.747));
+	EXPECT_TRUE(latch.update(true, true, true, 45.309, -75.747));
+}
+
+TEST_F(TerrainFollowerTest, SetpointOlderThanMissionIndexDoesNotLatch)
+{
+	TF::ApproachLatch latch;
+	// the Hold circle flown into, then the mission index moves past DO_LAND_START before the new setpoint arrives
+	EXPECT_FALSE(latch.update(false, true, false, 45.312, -75.755));
+	EXPECT_FALSE(latch.update(false, true, true, 45.312, -75.755));
+	EXPECT_FALSE(latch.update(true, false, true, 45.312, -75.755));
+	EXPECT_FALSE(latch.update(true, true, false, 45.309, -75.747));
 }

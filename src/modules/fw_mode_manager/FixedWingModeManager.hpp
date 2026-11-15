@@ -81,6 +81,7 @@
 #include <uORB/topics/position_controller_landing_status.h>
 #include <uORB/topics/position_controller_status.h>
 #include <uORB/topics/position_setpoint_triplet.h>
+#include <uORB/topics/rtl_status.h>
 #include <uORB/topics/terrain_follow_status.h>
 #include <uORB/topics/trajectory_setpoint.h>
 #include <uORB/topics/vehicle_angular_velocity.h>
@@ -193,6 +194,7 @@ private:
 	uORB::Subscription _vehicle_land_detected_sub{ORB_ID(vehicle_land_detected)};
 	uORB::Subscription _vehicle_status_sub{ORB_ID(vehicle_status)};
 	uORB::Subscription _mission_sub{ORB_ID(mission)};
+	uORB::Subscription _rtl_status_sub{ORB_ID(rtl_status)};
 	uORB::SubscriptionMultiArray<distance_sensor_s> _distance_sensor_subs{ORB_ID::distance_sensor};
 
 	uORB::Publication<terrain_follow_status_s> _terrain_follow_status_pub{ORB_ID(terrain_follow_status)};
@@ -408,11 +410,13 @@ private:
 	float _range_long_floor{0.f};
 	int32_t _mission_land_start{-1};
 	int32_t _mission_seq{-1};
+	uint8_t _rtl_type{rtl_status_s::RTL_STATUS_TYPE_NONE};
+	hrt_abstime _mission_time{0};
+	TerrainFollower::ApproachLatch _tf_approach;
 	bool _tf_called{false};
 	bool _tf_airborne{false};
 	bool _tf_announced{false};
 	bool _tf_limited{false};
-	bool _tf_descent_limited{false};
 	uint8_t _tf_state{TerrainFollower::OFF};
 	uint16_t _tf_loss_count{0};
 	hrt_abstime _tf_status_time{0};
