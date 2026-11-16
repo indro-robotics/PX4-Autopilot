@@ -172,7 +172,21 @@ param set-default LNDFW_AIRSPD_MAX 8.0
 
 # SOARING
 # Off: the 60 m fence leaves no height band, and no thermal has been flown on the aircraft.
-param set-default SOAR_EN 0
+param set-default SOAR_ENABLE 0
+# Glide polar of the wing at 3.78 kg: sink 1.42 m/s at 14 m/s.
+param set-default SOAR_POLAR_CD0 0.0297
+param set-default SOAR_POLAR_B 0.0702
+param set-default SOAR_POLAR_K 80.2
+# Heights above home of the motor restart, the motor cut and the ceiling.
+param set-default SOAR_ALT_MIN 100
+param set-default SOAR_ALT_CUTOFF 250
+param set-default SOAR_ALT_MAX 400
+# 35 deg flies a 35 m circle at 15.5 m/s.
+param set-default SOAR_THML_BANK 35
+# Thermalling circles stay 150 m inside the fence.
+param set-default SOAR_MAX_RADIUS 350
+# The thermal estimate leans with the wind over a base fixed to the ground.
+param set-default SOAR_DRIFT 0
 
 # TERRAIN FOLLOW
 # Off: the follow bits act only when set in flight, and the guard bit waits for its regression flights.

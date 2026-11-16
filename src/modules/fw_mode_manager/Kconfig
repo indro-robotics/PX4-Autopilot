@@ -25,3 +25,4 @@ menuconfig FW_SOARING
 	depends on MODULES_FW_MODE_MANAGER
 	---help---
 		Enable thermal soaring in Hold for fixed wing.
+		The firmware as a whole is then GPLv3: src/lib/soaring derives from ArduPilot.

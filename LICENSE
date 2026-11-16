@@ -27,3 +27,11 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Thermal soaring
+
+src/lib/soaring derives from the soaring library of ArduPilot and is licensed
+under the GNU General Public License, version 3 or later, in
+src/lib/soaring/COPYING. Firmware built with CONFIG_FW_SOARING contains that
+library and is, as a whole, licensed under the GNU General Public License,
+version 3.

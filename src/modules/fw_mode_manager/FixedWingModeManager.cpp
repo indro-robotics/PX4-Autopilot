@@ -141,13 +141,13 @@ FixedWingModeManager::vehicle_command_poll()
 	while (_vehicle_command_sub.update(&vehicle_command)) {
 #ifdef CONFIG_FW_SOARING
 		if (vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_SET_MODE) {
-			_soar_operator_cmd |= soaring::OPERATOR_MODE;
+			_soar_operator_cmd |= soaring::SoaringController::OPERATOR_MODE;
 
 		} else if (vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_REPOSITION
 			   || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_ALTITUDE
 			   || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_ORBIT
 			   || vehicle_command.command == vehicle_command_s::VEHICLE_CMD_DO_CHANGE_SPEED) {
-			_soar_operator_cmd |= soaring::OPERATOR_NAV;
+			_soar_operator_cmd |= soaring::SoaringController::OPERATOR_NAV;
 		}
 #endif // CONFIG_FW_SOARING
 
@@ -578,7 +578,7 @@ FixedWingModeManager::control_auto(const float control_interval, const Vector2d 
 	position_setpoint_s current_sp = pos_sp_curr;
 #ifdef CONFIG_FW_SOARING
 
-	if (_soar_out.state == soaring::State::THERMAL) {
+	if (_soar_out.state == soaring::SoaringController::State::THERMAL) {
 		control_soar_thermal(control_interval, ground_speed);
 		return;
 	}
@@ -2609,7 +2609,7 @@ void FixedWingModeManager::applyTerrainFollow(const float dt, const float nav_al
 			_pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_LOITER, close_to_circle)
 		     || _landing_abort_status || approach;
 #ifdef CONFIG_FW_SOARING
-	const bool soaring = _soar_out.state >= soaring::State::CLIMB;
+	const bool soaring = _soar_out.state >= soaring::SoaringController::State::CLIMB;
 #else
 	const bool soaring = false;
 #endif // CONFIG_FW_SOARING

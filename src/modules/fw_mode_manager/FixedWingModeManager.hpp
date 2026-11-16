@@ -110,7 +110,7 @@
 #include <uORB/topics/home_position.h>
 
 #ifdef CONFIG_FW_SOARING
-#include <lib/soaring/Soaring.hpp>
+#include <lib/soaring/SoaringController.hpp>
 #include <uORB/topics/debug_key_value.h>
 #include <uORB/topics/failsafe_flags.h>
 #include <uORB/topics/soaring_status.h>
@@ -493,9 +493,9 @@ private:
 	uORB::Publication<soaring_status_s> _soaring_status_pub{ORB_ID(soaring_status)};
 	uORB::Publication<debug_key_value_s> _debug_key_value_pub{ORB_ID(debug_key_value)};
 
-	soaring::Soaring _soaring;
-	soaring::Params _soar_p{};
-	soaring::Output _soar_out{};
+	soaring::SoaringController _soaring;
+	soaring::SoaringController::Params _soar_p{};
+	soaring::SoaringController::Output _soar_out{};
 	uint8_t _battery_warning{0};
 	float _airspeed_tas{NAN};
 	hrt_abstime _time_soar_airspeed{0};
@@ -507,7 +507,7 @@ private:
 
 	void soar_params_update();
 	void soar_update(const hrt_abstime now);
-	void soar_events(const soaring::State prev_state, const uint8_t prev_reason, const float height);
+	void soar_events(const soaring::SoaringController::State prev_state, const uint8_t prev_reason, const float height);
 	void soar_apply(position_setpoint_s &current_sp);
 	void control_soar_thermal(const float control_interval, const Vector2f &ground_speed);
 #endif // CONFIG_FW_SOARING
