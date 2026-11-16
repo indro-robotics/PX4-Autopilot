@@ -333,6 +333,12 @@ TerrainFollower::Output TerrainFollower::update(const Input &in, const Params &p
 		// the loss climb ends at the ceiling as the guard's climb does; the plan and the present height stand above it
 		out.altitude = math::min(out.altitude, math::max(math::max(in.ceiling, in.nav_alt), in.alt_amsl));
 
+		// TECS overshoots an altitude by a metre: a loss climb into the ceiling's slow-down flies the guard's rate and its bound
+		if (in.nav_alt < out.altitude && out.altitude > in.ceiling - p.climb_max * p.tc) {
+			out.use_rate = true;
+			out.height_rate = math::constrain((out.altitude - in.alt_amsl) / p.tc, -p.sink, p.climb_max);
+		}
+
 	} else if (_state == STANDBY && nav_alt > in.nav_alt) {
 		out.altitude = nav_alt;
 	}

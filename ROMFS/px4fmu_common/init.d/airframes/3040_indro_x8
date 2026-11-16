@@ -144,8 +144,10 @@ param set-default FW_LAUN_MOT_DEL 0.4
 param set-default FW_LAUN_SPD_MIN 2.5
 # Takeoff pitch flies FW_TKO_AIRSPD alone: a weak motor costs climb rate before airspeed.
 param set-default FW_TKO_SPDWT 2
-# Takeoff pitch floor at FW_LND_FL_PMIN above 5 m: a motor that stops in the climb pitches down for FW_TKO_AIRSPD.
+# Takeoff pitch floor at FW_TKO_PMIN_REL above 5 m: a motor that stops in the climb pitches down for FW_TKO_AIRSPD.
 param set-default FW_TKO_PMIN_ALT 5
+# At a 4 deg floor a motor cut in the climb glides at 11 m/s or more.
+param set-default FW_TKO_PMIN_REL 4
 # Pusher stopped on the launcher and commanded to zero in the flare.
 param set-default FW_THR_IDLE 0.0
 

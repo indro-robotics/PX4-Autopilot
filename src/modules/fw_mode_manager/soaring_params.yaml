@@ -99,7 +99,7 @@ parameters:
     SOAR_ALT_MAX:
       description:
         short: Height above home where thermalling stops
-        long: The effective ceiling is the lower of this and GF_MAX_VER_DIST less 30 m. No thermal is entered in the 30 m under the effective ceiling.
+        long: The effective ceiling is the lower of this and GF_MAX_VER_DIST less 30 m, with GF_MAX_VER_DIST 0 read as the terrain guard's 120 m. No thermal is entered in the 30 m under the effective ceiling.
       type: float
       default: 350
       min: 0

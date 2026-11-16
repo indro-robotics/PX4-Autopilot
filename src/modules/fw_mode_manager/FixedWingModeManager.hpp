@@ -504,6 +504,7 @@ private:
 	int32_t _soar_act_fail_act{0};
 	hrt_abstime _time_soar_status{0};
 	hrt_abstime _time_soar_debug{0};
+	hrt_abstime _soar_check_end{0};
 
 	void soar_params_update();
 	void soar_update(const hrt_abstime now);
@@ -931,6 +932,7 @@ private:
 		(ParamFloat<px4::params::FW_TL_LVL_ALT>) _param_fw_tl_lvl_alt,
 		(ParamFloat<px4::params::FW_TL_GLIDE>) _param_fw_tl_glide,
 		(ParamFloat<px4::params::FD_FW_TL_TIME>) _param_fd_fw_tl_time,
+		(ParamFloat<px4::params::FD_FW_TL_THR>) _param_fd_fw_tl_thr,
 
 		(ParamFloat<px4::params::NPFG_PERIOD>) _param_npfg_period,
 		(ParamFloat<px4::params::NPFG_DAMPING>) _param_npfg_damping,
@@ -987,6 +989,7 @@ private:
 		(ParamBool<px4::params::FW_LAUN_DETCN_ON>) _param_fw_laun_detcn_on,
 		(ParamFloat<px4::params::FW_TKO_SPDWT>) _param_fw_tko_spdwt,
 		(ParamFloat<px4::params::FW_TKO_PMIN_ALT>) _param_fw_tko_pmin_alt,
+		(ParamFloat<px4::params::FW_TKO_PMIN_REL>) _param_fw_tko_pmin_rel,
 		(ParamFloat<px4::params::FW_LAUN_CRS_DST>) _param_fw_laun_crs_dst,
 		(ParamFloat<px4::params::FW_AIRSPD_MAX>) _param_fw_airspd_max,
 		(ParamFloat<px4::params::FW_AIRSPD_MIN>) _param_fw_airspd_min,

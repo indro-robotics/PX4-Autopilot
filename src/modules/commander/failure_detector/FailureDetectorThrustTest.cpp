@@ -492,4 +492,72 @@ TEST(ThrustLossReturnLeg, WritesNothingOnTheRingOrWithoutALoweredLeg)
 	EXPECT_TRUE(isnan(ThrustLoss::returnLegAltitude(false, true, 22.f, 22.f, 21.f, 30.f, never)));
 }
 
+TEST_F(FailureDetectorThrustTest, MotorStoppedInGlideIsFlaggedAfterAnExitThatSkipsClimb)
+{
+	// 3040: FD_FW_TL_TIME 2.2 s; a GLIDE at throttle 0 sinks 1.42 m/s over the stopped motor and never flags
+	const ThrustLoss::Param p{2.2f, 0.7f, -0.8f};
+	fly(60.f, 0.f, -1.42f, true, true, p);
+	ASSERT_FALSE(_tl.lost());
+	// the battery ends soaring into INHIBIT, and the Hold below descends at throttle 0 apart from the floor
+	const uint64_t end = ThrustLoss::checkThrottleEnd(0, true, false, _t_us, p.time_s);
+	float flagged = -1.f;
+
+	for (int k = 1; k <= 250; k++) {
+		_t_us += 20000;
+		const float throttle = ThrustLoss::checkThrottle(true, false, _t_us, end) ? p.throttle : 0.f;
+		_tl.update(_t_us, true, true, false, throttle, -1.42f * 9.81f, p);
+
+		if (flagged < 0.f && _tl.lost()) {
+			flagged = k * kStep;
+		}
+	}
+
+	// 2.2 s from the first sample at FD_FW_TL_THR, 0.02 s after the exit, inside the 2.2 + 1 = 3.2 s of the floor
+	EXPECT_NEAR(flagged, 2.22f, 0.03f);
+}
+
+TEST_F(FailureDetectorThrustTest, RunningMotorAfterAnExitThatSkipsClimbKeepsNoFlag)
+{
+	const ThrustLoss::Param p{2.2f, 0.7f, -0.8f};
+	fly(60.f, 0.f, -1.42f, true, true, p);
+	const uint64_t exit_us = _t_us;
+	const uint64_t end = ThrustLoss::checkThrottleEnd(0, true, false, exit_us, p.time_s);
+
+	// a running motor at FD_FW_TL_THR gains 0.5 m/s of energy while the Hold descends
+	for (int k = 1; k <= 250; k++) {
+		_t_us += 20000;
+		const bool floor = ThrustLoss::checkThrottle(true, false, _t_us, end);
+		_tl.update(_t_us, true, true, false, floor ? p.throttle : 0.f, (floor ? 0.5f : -1.42f) * 9.81f, p);
+	}
+
+	EXPECT_FALSE(_tl.lost());
+	// the floor ends 3.2 s after the exit
+	EXPECT_TRUE(ThrustLoss::checkThrottle(true, false, exit_us + 3180000, end));
+	EXPECT_FALSE(ThrustLoss::checkThrottle(true, false, exit_us + 3200000, end));
+}
+
+TEST(ThrustLossSoaringExit, FloorOnlyAfterAnExitFromGlideOrThermalThatSkipsClimb)
+{
+	const uint64_t t = 100000000;
+	// GLIDE or THERMAL to OFF or INHIBIT: FD_FW_TL_TIME 2.2 s plus 1 s
+	EXPECT_EQ(ThrustLoss::checkThrottleEnd(0, true, false, t, 2.2f), t + 3200000);
+	// GLIDE to CLIMB, or between GLIDE and THERMAL: soaring sets the throttle
+	EXPECT_EQ(ThrustLoss::checkThrottleEnd(0, true, true, t, 2.2f), 0u);
+	// CLIMB to INHIBIT: the motor ran up to the exit
+	EXPECT_EQ(ThrustLoss::checkThrottleEnd(0, false, false, t, 2.2f), 0u);
+	// the cycles after the exit keep its window
+	EXPECT_EQ(ThrustLoss::checkThrottleEnd(t + 3200000, false, false, t + 20000, 2.2f), t + 3200000);
+}
+
+TEST(ThrustLossSoaringExit, FloorInAutoFlightOffTheGroundOnly)
+{
+	const uint64_t end = 5000000;
+	EXPECT_TRUE(ThrustLoss::checkThrottle(true, false, 1000000, end));
+	// a pilot mode keeps the throttle of its stick, and a landed wing keeps the motor stopped
+	EXPECT_FALSE(ThrustLoss::checkThrottle(false, false, 1000000, end));
+	EXPECT_FALSE(ThrustLoss::checkThrottle(true, true, 1000000, end));
+	// no exit yet
+	EXPECT_FALSE(ThrustLoss::checkThrottle(true, false, 1000000, 0));
+}
+
 } // namespace

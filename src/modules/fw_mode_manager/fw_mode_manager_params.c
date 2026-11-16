@@ -301,8 +301,8 @@ PARAM_DEFINE_INT32(FW_LND_EARLYCFG, 0);
 /**
  * Flare, minimum pitch
  *
- * Minimum pitch during landing flare. Also the pitch floor after a thrust loss (FD_FW_TL_TIME) in Takeoff and, with a
- * valid range to the ground, below twice FW_LND_FLALT outside a landing, and the Takeoff floor above FW_TKO_PMIN_ALT.
+ * Minimum pitch during landing flare. Also the pitch floor after a thrust loss (FD_FW_TL_TIME) with a valid range to the
+ * ground, below twice FW_LND_FLALT outside a landing and the Takeoff.
  *
  * @unit deg
  * @min -5

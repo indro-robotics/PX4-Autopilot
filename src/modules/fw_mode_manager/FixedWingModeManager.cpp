@@ -111,6 +111,8 @@ FixedWingModeManager::parameters_update()
 	_directional_guidance.setPeriodSafetyFactor(_param_npfg_period_safety_factor.get());
 #ifdef CONFIG_FW_SOARING
 	soar_params_update();
+	// without a fence the guard climbs at most to its own ceiling, so soaring above it would leave the guard no climb
+	_soar_p.gf_max_ver = _soar_p.gf_max_ver > 0.f ? _soar_p.gf_max_ver : TerrainFollower::kCeilingNoFence;
 #endif // CONFIG_FW_SOARING
 }
 
@@ -1310,7 +1312,7 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 
 			_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
 						  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
-			_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
+			_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_tko_pmin_rel.get() :
 								_takeoff_pitch_min.get()));
 			_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 			_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
@@ -1465,7 +1467,7 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 		_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
 					  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
-		_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_lnd_fl_pmin.get() :
+		_ctrl_configuration_handler.setPitchMin(radians(_takeoff_floor_released ? _param_fw_tko_pmin_rel.get() :
 							_takeoff_pitch_min.get()));
 		_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 		_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
@@ -2265,7 +2267,10 @@ FixedWingModeManager::Run()
 		update_in_air_states(now);
 
 #ifdef CONFIG_FW_SOARING
+		const bool soar_motor_off = _soar_out.state > soaring::SoaringController::State::CLIMB;
 		soar_update(now);
+		_soar_check_end = ThrustLoss::checkThrottleEnd(_soar_check_end, soar_motor_off,
+				  _soar_out.state >= soaring::SoaringController::State::CLIMB, now, _param_fd_fw_tl_time.get());
 #endif // CONFIG_FW_SOARING
 
 		// restore nominal TECS parameters in case changed intermittently (e.g. in landing handling)
@@ -2376,6 +2381,14 @@ FixedWingModeManager::Run()
 
 		const bool auto_mode = _control_mode.flag_control_auto_enabled;
 
+#ifdef CONFIG_FW_SOARING
+
+		if (ThrustLoss::checkThrottle(auto_mode, _landed, now, _soar_check_end)) {
+			_ctrl_configuration_handler.setThrottleMin(_param_fd_fw_tl_thr.get());
+		}
+
+#endif // CONFIG_FW_SOARING
+
 		// the ESC checks raise the same flag: without the thrust loss check the flag keeps its stock meaning
 		if ((_vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) && _param_fd_fw_tl_time.get() > 0.f) {
 			const float height = _local_pos.dist_bottom_valid ? _local_pos.dist_bottom : _current_altitude - _reference_altitude;
@@ -2404,7 +2417,7 @@ FixedWingModeManager::Run()
 
 			if (ThrustLoss::pitchFloor(takeoff, landing, _local_pos.dist_bottom_valid, _local_pos.dist_bottom,
 						   _param_fw_lnd_flalt.get())) {
-				_ctrl_configuration_handler.setPitchMin(radians(_param_fw_lnd_fl_pmin.get()));
+				_ctrl_configuration_handler.setPitchMin(radians(takeoff ? _param_fw_tko_pmin_rel.get() : _param_fw_lnd_fl_pmin.get()));
 			}
 
 			if (!_flare_states.flaring) {

@@ -124,7 +124,7 @@ PARAM_DEFINE_FLOAT(FW_TKO_SPDWT, -1.0f);
 /**
  * Takeoff pitch floor height
  *
- * Height above the launch point from which the Takeoff pitch floor is FW_LND_FL_PMIN instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. 0 sets no height. A thrust loss flag (FD_FW_TL_TIME) sets the same floor at any height.
+ * Height above the launch point from which the Takeoff pitch floor is FW_TKO_PMIN_REL instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. 0 sets no height. A thrust loss flag (FD_FW_TL_TIME) sets the same floor at any height.
  *
  * @unit m
  * @min 0.0
@@ -134,3 +134,17 @@ PARAM_DEFINE_FLOAT(FW_TKO_SPDWT, -1.0f);
  * @group FW Auto Takeoff
  */
 PARAM_DEFINE_FLOAT(FW_TKO_PMIN_ALT, 0.0f);
+
+/**
+ * Released Takeoff pitch floor
+ *
+ * Takeoff pitch floor above FW_TKO_PMIN_ALT, and with a motor failure flag, in place of FW_TKO_PITCH_MIN.
+ *
+ * @unit deg
+ * @min -5.0
+ * @max 15.0
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_TKO_PMIN_REL, 2.5f);

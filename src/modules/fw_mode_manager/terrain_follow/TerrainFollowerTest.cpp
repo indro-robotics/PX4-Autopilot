@@ -1573,3 +1573,60 @@ TEST_F(TerrainFollowerTest, LossClimbEndsAtTheCeiling)
 	step();
 	EXPECT_NEAR(out.altitude, kTerrain + 36.f, 0.01f);
 }
+
+TEST_F(TerrainFollowerTest, LossClimbIntoTheCeilingFliesTheGuardsRate)
+{
+	// Mission follow at 30 m over the plain, 130 m, under a 150 m ceiling; FW_TF_LOSS_UP 20 asks for 150 m
+	p.loss_up = 20.f;
+	in.ceiling = kTerrain + 50.f;
+	follow();
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// (150 - 130) / 4 = 5 m/s, held to FW_T_CLMB_MAX 3
+	EXPECT_TRUE(out.use_rate);
+	EXPECT_FLOAT_EQ(out.height_rate, p.climb_max);
+	// for 60 s the rate is the pull-up's, FW_T_CLMB_MAX under the bound (ceiling - height) / FW_TF_TC, and no Return is asked
+	float worst = 0.f;
+	float peak = in.alt_amsl;
+	bool returned = false;
+
+	for (int i = 0; i < 3000; i++) {
+		in.alt_amsl += (out.use_rate ? out.height_rate : 0.f) * kDt;
+		peak = fmaxf(peak, in.alt_amsl);
+		step();
+		worst = fmaxf(worst, fabsf(out.height_rate - fminf(p.climb_max, fmaxf((in.ceiling - in.alt_amsl) / p.tc, 0.f))));
+		returned |= out.request_return;
+	}
+
+	EXPECT_EQ(out.state, TF::RANGE_LOST);
+	EXPECT_LT(worst, 1e-4f);
+	EXPECT_LE(peak, in.ceiling);
+	EXPECT_GT(peak, in.ceiling - 0.5f);
+	EXPECT_FALSE(returned);
+}
+
+TEST_F(TerrainFollowerTest, LossClimbUnderTheCeilingFliesTheRateOnlyNearIt)
+{
+	in.ceiling = kTerrain + 40.5f;
+	follow();
+	in.raw_valid = false;
+	in.hagl_raw = NAN;
+	run(0.6f);
+	ASSERT_EQ(out.state, TF::RANGE_LOST);
+	// 140 m, 0.5 m under the ceiling, is inside its slow-down of 3 x 4 = 12 m: (140 - 130) / 4 = 2.5 m/s
+	EXPECT_TRUE(out.use_rate);
+	EXPECT_NEAR(out.height_rate, 2.5f, 1e-3f);
+	// 140 m under a 152.5 m ceiling is outside it: TECS flies the altitude
+	in.ceiling = kTerrain + 52.5f;
+	step();
+	EXPECT_FALSE(out.use_rate);
+	EXPECT_NEAR(out.altitude, kTerrain + 40.f, 0.01f);
+	// a plan above the ceiling is the altitude, not the loss climb
+	in.ceiling = kTerrain + 35.f;
+	in.nav_alt = kTerrain + 45.f;
+	step();
+	EXPECT_FALSE(out.use_rate);
+	EXPECT_NEAR(out.altitude, kTerrain + 45.f, 0.01f);
+}
