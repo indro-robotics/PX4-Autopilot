@@ -167,10 +167,10 @@ public:
 		return restore ? fmaxf(altitude, return_alt) : NAN;
 	}
 
-	// GLIDE and THERMAL hold the throttle at 0, where a stopped motor reads no loss: an exit that skips CLIMB demands FD_FW_TL_THR
-	static uint64_t checkThrottleEnd(uint64_t end_us, bool motor_off_before, bool soaring_after, uint64_t now_us, float time_s)
+	// GLIDE and THERMAL hold the throttle at 0, where a stopped motor reads no loss: every exit, CLIMB included, demands FD_FW_TL_THR
+	static uint64_t checkThrottleEnd(uint64_t end_us, bool motor_off_before, bool motor_off_after, uint64_t now_us, float time_s)
 	{
-		return (motor_off_before && !soaring_after) ? now_us + static_cast<uint64_t>((time_s + 1.f) * 1e6f) : end_us;
+		return (motor_off_before && !motor_off_after) ? now_us + static_cast<uint64_t>((time_s + 1.f) * 1e6f) : end_us;
 	}
 
 	static bool checkThrottle(bool auto_mode, bool landed, uint64_t now_us, uint64_t end_us)

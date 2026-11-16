@@ -2270,7 +2270,7 @@ FixedWingModeManager::Run()
 		const bool soar_motor_off = _soar_out.state > soaring::SoaringController::State::CLIMB;
 		soar_update(now);
 		_soar_check_end = ThrustLoss::checkThrottleEnd(_soar_check_end, soar_motor_off,
-				  _soar_out.state >= soaring::SoaringController::State::CLIMB, now, _param_fd_fw_tl_time.get());
+				  _soar_out.state > soaring::SoaringController::State::CLIMB, now, _param_fd_fw_tl_time.get());
 #endif // CONFIG_FW_SOARING
 
 		// restore nominal TECS parameters in case changed intermittently (e.g. in landing handling)
@@ -2383,7 +2383,9 @@ FixedWingModeManager::Run()
 
 #ifdef CONFIG_FW_SOARING
 
-		if (ThrustLoss::checkThrottle(auto_mode, _landed, now, _soar_check_end)) {
+		// GLIDE and THERMAL hold the motor off, and their next exit opens a new window
+		if (ThrustLoss::checkThrottle(auto_mode && _soar_out.state <= soaring::SoaringController::State::CLIMB,
+					      _landed, now, _soar_check_end)) {
 			_ctrl_configuration_handler.setThrottleMin(_param_fd_fw_tl_thr.get());
 		}
 

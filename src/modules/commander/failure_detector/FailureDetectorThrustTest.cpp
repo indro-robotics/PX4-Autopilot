@@ -536,12 +536,12 @@ TEST_F(FailureDetectorThrustTest, RunningMotorAfterAnExitThatSkipsClimbKeepsNoFl
 	EXPECT_FALSE(ThrustLoss::checkThrottle(true, false, exit_us + 3200000, end));
 }
 
-TEST(ThrustLossSoaringExit, FloorOnlyAfterAnExitFromGlideOrThermalThatSkipsClimb)
+TEST(ThrustLossSoaringExit, FloorOnlyAfterAnExitFromGlideOrThermal)
 {
 	const uint64_t t = 100000000;
-	// GLIDE or THERMAL to OFF or INHIBIT: FD_FW_TL_TIME 2.2 s plus 1 s
+	// GLIDE or THERMAL to OFF, INHIBIT or CLIMB: FD_FW_TL_TIME 2.2 s plus 1 s
 	EXPECT_EQ(ThrustLoss::checkThrottleEnd(0, true, false, t, 2.2f), t + 3200000);
-	// GLIDE to CLIMB, or between GLIDE and THERMAL: soaring sets the throttle
+	// between GLIDE and THERMAL the motor stays off
 	EXPECT_EQ(ThrustLoss::checkThrottleEnd(0, true, true, t, 2.2f), 0u);
 	// CLIMB to INHIBIT: the motor ran up to the exit
 	EXPECT_EQ(ThrustLoss::checkThrottleEnd(0, false, false, t, 2.2f), 0u);
