@@ -2,21 +2,180 @@ module_name: fw_mode_manager
 parameters:
 - group: FW Soaring
   definitions:
-    SOAR_EN:
+    SOAR_ENABLE:
       description:
         short: Thermal soaring in Hold
       type: boolean
       default: 0
+    SOAR_VSPEED:
+      description:
+        short: Climb rate needed to enter and to stay in a thermal
+        long: The speed to fly takes it as the climb expected in the next thermal.
+      type: float
+      default: 0.7
+      min: 0
+      max: 10
+      unit: m/s
+      decimal: 2
+    SOAR_Q1:
+      description:
+        short: Thermal strength process noise per update
+      type: float
+      default: 0.001
+      min: 0.0001
+      max: 0.01
+      unit: m/s
+      decimal: 4
+    SOAR_Q2:
+      description:
+        short: Thermal radius and position process noise per update
+      type: float
+      default: 0.03
+      min: 0.01
+      max: 1
+      unit: m
+      decimal: 2
+    SOAR_R:
+      description:
+        short: Variometer noise
+      type: float
+      default: 0.45
+      min: 0.01
+      max: 1
+      unit: m/s
+      decimal: 2
+    SOAR_DIST_AHEAD:
+      description:
+        short: First guess of the thermal centre ahead of the aircraft
+      type: float
+      default: 5
+      min: 0
+      max: 100
+      unit: m
+      decimal: 0
+    SOAR_MIN_THML_S:
+      description:
+        short: Shortest thermalling time before an exit on weak lift, lost height or drift
+      type: float
+      default: 20
+      min: 0
+      max: 600
+      unit: s
+      decimal: 0
+    SOAR_MIN_CRSE_S:
+      description:
+        short: Shortest glide before a thermal entry
+      type: float
+      default: 10
+      min: 0
+      max: 600
+      unit: s
+      decimal: 0
+    SOAR_POLAR_CD0:
+      description:
+        short: Zero-lift drag coefficient of the glide polar
+      type: float
+      default: 0.027
+      min: 0.005
+      max: 0.5
+      decimal: 4
+    SOAR_POLAR_B:
+      description:
+        short: Induced drag factor of the glide polar
+      type: float
+      default: 0.031
+      min: 0.005
+      max: 0.5
+      decimal: 4
+    SOAR_POLAR_K:
+      description:
+        short: Glide polar wing loading term, 2 m g / (rho0 S)
+      type: float
+      default: 25.6
+      min: 20
+      max: 400
+      unit: (m/s)^2
+      decimal: 1
+    SOAR_ALT_MAX:
+      description:
+        short: Height above home where thermalling stops
+        long: The effective ceiling is the lower of this and GF_MAX_VER_DIST less 30 m. No thermal is entered in the 30 m under the effective ceiling.
+      type: float
+      default: 350
+      min: 0
+      max: 5000
+      unit: m
+      decimal: 0
     SOAR_ALT_MIN:
       description:
         short: Lowest height above home where the motor restarts and thermalling ends
         long: The restart height is the higher of this and SOAR_ALT_PAT plus 1.3 times the glide height home at FW_AIRSPD_MIN in the estimated wind.
       type: float
-      default: 100
-      min: 60
+      default: 50
+      min: 0
       max: 1000
       unit: m
       decimal: 0
+    SOAR_ALT_CUTOFF:
+      description:
+        short: Height above home where the motor climb ends
+        long: The motor stops here after a climb from the restart height, and only while the restart height is at least 30 m lower. Soaring started above the restart height glides at once.
+      type: float
+      default: 250
+      min: 0
+      max: 5000
+      unit: m
+      decimal: 0
+    SOAR_MAX_DRIFT:
+      description:
+        short: Largest distance of the thermal estimate from its entry point
+        long: -1 sets no limit.
+      type: float
+      default: -1
+      min: -1
+      max: 1000
+      unit: m
+      decimal: 0
+    SOAR_MAX_RADIUS:
+      description:
+        short: Largest distance from home of a thermalling circle
+        long: -1 sets no limit. The effective radius is the lower of this and GF_MAX_HOR_DIST less 100 m.
+      type: float
+      default: -1
+      min: -1
+      max: 1000
+      unit: m
+      decimal: 0
+    SOAR_THML_BANK:
+      description:
+        short: Thermalling bank angle
+        long: The bank flown is the lower of this and FW_R_LIM less 15 deg, not under 20 deg.
+      type: float
+      default: 30
+      min: 20
+      max: 50
+      unit: deg
+      decimal: 0
+    SOAR_THML_ARSPD:
+      description:
+        short: Thermalling calibrated airspeed
+        long: 0 uses FW_AIRSPD_MIN scaled for the thermalling bank.
+      type: float
+      default: 0
+      min: 0
+      max: 50
+      unit: m/s
+      decimal: 1
+    SOAR_CRSE_ARSPD:
+      description:
+        short: Calibrated airspeed in glide and motor climb
+        long: 0 uses FW_AIRSPD_MIN. -1 flies the speed to fly in GLIDE. CLIMB flies FW_AIRSPD_TRIM from 50 m under SOAR_ALT_CUTOFF. GLIDE flies FW_AIRSPD_MAX from above the effective ceiling down to 20 m under it.
+      type: float
+      default: 0
+      min: -1
+      max: 50
+      unit: m/s
+      decimal: 1
     SOAR_ALT_PAT:
       description:
         short: Height above home to arrive with after the glide home
@@ -26,179 +185,22 @@ parameters:
       max: 300
       unit: m
       decimal: 0
-    SOAR_ALT_CUT:
-      description:
-        short: Height above home where the motor climb ends
-        long: The motor stops here after a climb from the restart height, and only while the restart height is at least 30 m lower. Soaring started above the restart height glides at once.
-      type: float
-      default: 250
-      min: 60
-      max: 2000
-      unit: m
-      decimal: 0
-    SOAR_ALT_MAX:
-      description:
-        short: Height above home where thermalling stops
-        long: The effective ceiling is the lower of this and GF_MAX_VER_DIST less 30 m.
-      type: float
-      default: 400
-      min: 80
-      max: 3000
-      unit: m
-      decimal: 0
-    SOAR_MAX_RAD:
-      description:
-        short: Largest distance from home of a thermalling circle
-        long: The effective radius is the lower of this and GF_MAX_HOR_DIST less 100 m.
-      type: float
-      default: 350
-      min: 100
-      max: 5000
-      unit: m
-      decimal: 0
-    SOAR_VSPEED:
-      description:
-        short: Climb rate needed to enter and to stay in a thermal
-      type: float
-      default: 0.5
-      min: 0
-      max: 5
-      unit: m/s
-      decimal: 2
-    SOAR_THML_BANK:
-      description:
-        short: Thermalling bank angle
-        long: The bank flown is the lower of this and FW_R_LIM less 15 deg.
-      type: float
-      default: 35
-      min: 20
-      max: 50
-      unit: deg
-      decimal: 0
-    SOAR_THML_ASPD:
-      description:
-        short: Thermalling calibrated airspeed
-        long: 0 uses FW_AIRSPD_MIN scaled for the thermalling bank.
-      type: float
-      default: 0
-      min: 0
-      max: 40
-      unit: m/s
-      decimal: 1
-    SOAR_CRSE_ASPD:
-      description:
-        short: Calibrated airspeed in glide and motor climb
-        long: 0 uses FW_AIRSPD_MIN. CLIMB flies FW_AIRSPD_TRIM from 50 m under SOAR_ALT_CUT. GLIDE flies FW_AIRSPD_MAX from above the effective ceiling down to 20 m under it.
-      type: float
-      default: 0
-      min: 0
-      max: 40
-      unit: m/s
-      decimal: 1
     SOAR_CRSE_RAD:
       description:
         short: Hold orbit radius while soaring
-        long: 0 keeps the navigator radius, as does a Hold whose orbit would pass SOAR_MAX_RAD.
+        long: 0 keeps the navigator radius, as does a Hold whose orbit would pass SOAR_MAX_RADIUS.
       type: float
       default: 150
       min: 0
       max: 1000
       unit: m
       decimal: 0
-    SOAR_MIN_THML_S:
-      description:
-        short: Shortest thermalling time before a weak-lift exit
-      type: float
-      default: 30
-      min: 0
-      max: 600
-      unit: s
-      decimal: 0
-    SOAR_MIN_CRSE_S:
-      description:
-        short: Shortest glide before a thermal entry
-      type: float
-      default: 30
-      min: 0
-      max: 600
-      unit: s
-      decimal: 0
-    SOAR_VARIO_TC:
-      description:
-        short: Time constant of the thermal entry filter
-      type: float
-      default: 2.0
-      min: 0.5
-      max: 10
-      unit: s
-      decimal: 1
-    SOAR_POLAR_CD0:
-      description:
-        short: Zero-lift drag coefficient of the glide polar
-      type: float
-      default: 0.0297
-      min: 0.005
-      max: 0.2
-      decimal: 4
-    SOAR_POLAR_B:
-      description:
-        short: Induced drag factor of the glide polar
-      type: float
-      default: 0.0702
-      min: 0.005
-      max: 0.5
-      decimal: 4
-    SOAR_POLAR_K:
-      description:
-        short: Glide polar wing loading term, 2 m g / (rho0 S)
-      type: float
-      default: 80.2
-      min: 10
-      max: 500
-      unit: (m/s)^2
-      decimal: 1
-    SOAR_Q1:
-      description:
-        short: Thermal strength process noise
-      type: float
-      default: 0.02
-      min: 0.0001
-      max: 1
-      unit: m/s^2/sqrt(Hz)
-      decimal: 4
-    SOAR_Q2:
-      description:
-        short: Thermal radius and position process noise
-      type: float
-      default: 3.0
-      min: 0.01
-      max: 10
-      unit: m/s/sqrt(Hz)
-      decimal: 2
-    SOAR_R:
-      description:
-        short: Variometer noise
-      type: float
-      default: 0.5
-      min: 0.05
-      max: 5
-      unit: m/s
-      decimal: 2
-    SOAR_DIST_AHEAD:
-      description:
-        short: First guess of the thermal centre ahead of the aircraft
-      type: float
-      default: 15
-      min: 0
-      max: 100
-      unit: m
-      decimal: 0
     SOAR_DRIFT:
       description:
-        short: Thermal drift as a fraction of the estimated wind
-        long: The thermal estimate and the commanded thermalling centre move with the wind times this value.
+        short: Share of the wind the base of a thermal travels with
+        long: At 0 the thermal is a column fixed to the ground that leans with the wind. At 1 the wind carries it upright.
       type: float
-      default: 0.75
+      default: 0
       min: 0
-      max: 1.2
+      max: 1
       decimal: 2

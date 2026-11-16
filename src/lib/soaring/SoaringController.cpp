@@ -393,10 +393,6 @@ void SoaringController::update(const Input &in, const Params &p, Output &out)
 			if (in.height > p.alt_cutoff && alt_floor <= p.alt_cutoff - 30.f && _glide_bar_s <= 0.f) {
 				// Start glide
 				setState(State::GLIDE, REASON_NONE, in.height);
-
-				// Reset the filtered vario rate - it is currently elevated due to the climb rate and would otherwise take a while to fall again,
-				// leading to false positives.
-				_vario.reset_trigger_filter(0.0f);
 			}
 
 			break;
@@ -415,7 +411,8 @@ void SoaringController::update(const Input &in, const Params &p, Output &out)
 				update_cruising(in, p);
 
 				// Test for switch into THERMAL mode
-				if (check_thermal_criteria(p, alt_floor, alt_max) && dist_home + 2.f * radius <= r_soar) {
+				// 30 m under the ceiling: with SOAR_MIN_CRSE_S 0 a ceiling exit 5 s ahead re-enters on the next sample
+				if (check_thermal_criteria(p, alt_floor, alt_max - 30.f) && dist_home + 2.f * radius <= r_soar) {
 					init_thermalling(in, p);
 				}
 			}
@@ -466,6 +463,9 @@ void SoaringController::update(const Input &in, const Params &p, Output &out)
 
 	// the path angle change to the glide is the pitch change a cut needs: TECS alone takes 30 s to find it
 	if (_state == State::GLIDE && prev != State::GLIDE && prev != State::THERMAL) {
+		// Reset the filtered vario rate - it is currently elevated due to the climb rate and would otherwise take a while to fall again,
+		// leading to false positives.
+		_vario.reset_trigger_filter(0.0f);
 		_cut_count++;
 		// only a soaring CLIMB leaves its motor climb in the pitch integrator, and lift is no part of it
 		const float climb = prev == State::CLIMB ? fminf(_climb_f, p.clmb_max) : 0.f;

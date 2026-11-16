@@ -37,10 +37,11 @@
 #include <string.h>
 #include <uORB/topics/battery_status.h>
 
-using SoarState = soaring::State;
+using Soar = soaring::SoaringController;
+using SoarState = Soar::State;
 
 static_assert(soaring_status_s::STATE_THERMAL == (uint8_t)SoarState::THERMAL, "soaring state numbering");
-static_assert(soaring_status_s::REASON_TERRAIN == soaring::REASON_TERRAIN, "soaring reason numbering");
+static_assert(soaring_status_s::REASON_DRIFT == Soar::REASON_DRIFT, "soaring reason numbering");
 
 void
 FixedWingModeManager::soar_params_update()
@@ -48,31 +49,31 @@ FixedWingModeManager::soar_params_update()
 	// a table of handles is smaller in flash than one Param object per field
 	static constexpr struct {
 		px4::params id;
-		float soaring::Params::*field;
+		float Soar::Params::*field;
 	} kParams[] = {
-		{px4::params::SOAR_ALT_MIN, &soaring::Params::alt_min},
-		{px4::params::SOAR_ALT_PAT, &soaring::Params::alt_pat},
-		{px4::params::SOAR_ALT_CUT, &soaring::Params::alt_cut},
-		{px4::params::SOAR_ALT_MAX, &soaring::Params::alt_max},
-		{px4::params::SOAR_MAX_RAD, &soaring::Params::max_rad},
-		{px4::params::SOAR_VSPEED, &soaring::Params::vspeed},
-		{px4::params::SOAR_THML_BANK, &soaring::Params::thml_bank},
-		{px4::params::SOAR_THML_ASPD, &soaring::Params::thml_aspd},
-		{px4::params::SOAR_CRSE_ASPD, &soaring::Params::crse_aspd},
-		{px4::params::SOAR_CRSE_RAD, &soaring::Params::crse_rad},
-		{px4::params::SOAR_MIN_THML_S, &soaring::Params::min_thml_s},
-		{px4::params::SOAR_MIN_CRSE_S, &soaring::Params::min_crse_s},
-		{px4::params::SOAR_VARIO_TC, &soaring::Params::vario_tc},
-		{px4::params::SOAR_POLAR_CD0, &soaring::Params::cd0},
-		{px4::params::SOAR_POLAR_B, &soaring::Params::b},
-		{px4::params::SOAR_POLAR_K, &soaring::Params::k},
-		{px4::params::SOAR_Q1, &soaring::Params::q1},
-		{px4::params::SOAR_Q2, &soaring::Params::q2},
-		{px4::params::SOAR_R, &soaring::Params::r},
-		{px4::params::SOAR_DIST_AHEAD, &soaring::Params::dist_ahead},
-		{px4::params::SOAR_DRIFT, &soaring::Params::drift},
-		{px4::params::GF_MAX_VER_DIST, &soaring::Params::gf_max_ver},
-		{px4::params::GF_MAX_HOR_DIST, &soaring::Params::gf_max_hor},
+		{px4::params::SOAR_VSPEED, &Soar::Params::vspeed},
+		{px4::params::SOAR_Q1, &Soar::Params::q1},
+		{px4::params::SOAR_Q2, &Soar::Params::q2},
+		{px4::params::SOAR_R, &Soar::Params::r},
+		{px4::params::SOAR_DIST_AHEAD, &Soar::Params::dist_ahead},
+		{px4::params::SOAR_MIN_THML_S, &Soar::Params::min_thml_s},
+		{px4::params::SOAR_MIN_CRSE_S, &Soar::Params::min_crse_s},
+		{px4::params::SOAR_POLAR_CD0, &Soar::Params::polar_cd0},
+		{px4::params::SOAR_POLAR_B, &Soar::Params::polar_b},
+		{px4::params::SOAR_POLAR_K, &Soar::Params::polar_k},
+		{px4::params::SOAR_ALT_MAX, &Soar::Params::alt_max},
+		{px4::params::SOAR_ALT_MIN, &Soar::Params::alt_min},
+		{px4::params::SOAR_ALT_CUTOFF, &Soar::Params::alt_cutoff},
+		{px4::params::SOAR_MAX_DRIFT, &Soar::Params::max_drift},
+		{px4::params::SOAR_MAX_RADIUS, &Soar::Params::max_radius},
+		{px4::params::SOAR_THML_BANK, &Soar::Params::thml_bank},
+		{px4::params::SOAR_THML_ARSPD, &Soar::Params::thml_arspd},
+		{px4::params::SOAR_CRSE_ARSPD, &Soar::Params::crse_arspd},
+		{px4::params::SOAR_ALT_PAT, &Soar::Params::alt_pat},
+		{px4::params::SOAR_CRSE_RAD, &Soar::Params::crse_rad},
+		{px4::params::SOAR_DRIFT, &Soar::Params::drift},
+		{px4::params::GF_MAX_VER_DIST, &Soar::Params::gf_max_ver},
+		{px4::params::GF_MAX_HOR_DIST, &Soar::Params::gf_max_hor},
 	};
 
 	for (const auto &e : kParams) {
@@ -80,12 +81,12 @@ FixedWingModeManager::soar_params_update()
 		param_get(param_handle(e.id), &(_soar_p.*e.field));
 	}
 
-	int32_t enabled = 0;
-	param_set_used(param_handle(px4::params::SOAR_EN));
-	param_get(param_handle(px4::params::SOAR_EN), &enabled);
-	_soar_p.enabled = enabled == 1;
+	int32_t enable = 0;
+	param_set_used(param_handle(px4::params::SOAR_ENABLE));
+	param_get(param_handle(px4::params::SOAR_ENABLE), &enable);
+	_soar_p.enable = enable == 1;
 	param_get(param_handle(px4::params::COM_ACT_FAIL_ACT), &_soar_act_fail_act);
-	_soar_p.thml_bank = math::radians(math::min(_soar_p.thml_bank, _param_fw_r_lim.get() - 15.f));
+	_soar_p.thml_bank = math::min(_soar_p.thml_bank, _param_fw_r_lim.get() - 15.f);
 	_soar_p.airspd_min = _param_fw_airspd_min.get();
 	_soar_p.airspd_trim = _param_fw_airspd_trim.get();
 	_soar_p.airspd_max = _param_fw_airspd_max.get();
@@ -111,55 +112,60 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 			  && _position_setpoint_current_valid && _global_local_proj_ref.isInitialized()
 			  && !_landed && _vehicle_status.vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING;
 
-	soaring::Input in;
+	Soar::Input in;
 	in.time_us = now;
 
 	const bool motor_failed = _vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR;
 
 	if (motor_failed && _soar_out.state >= SoarState::CLIMB) {
 		// the failsafe changes the mode one vehicle_status sample after the flag, and one cycle may read both
-		in.inhibit_reason = soaring::REASON_MOTOR;
+		in.inhibit_reason = Soar::REASON_MOTOR;
 
 	} else if (!hold) {
-		in.inhibit_reason = soaring::REASON_MODE;
+		in.inhibit_reason = Soar::REASON_MODE;
 
-	} else if (!soaring::Soaring::configOk(_soar_act_fail_act, _param_fd_fw_tl_time.get())) {
-		in.inhibit_reason = soaring::REASON_CONFIG;
+	} else if (!Soar::configOk(_soar_act_fail_act, _param_fd_fw_tl_time.get())) {
+		in.inhibit_reason = Soar::REASON_CONFIG;
 
 	} else if (_vehicle_status.failsafe) {
-		in.inhibit_reason = soaring::REASON_FAILSAFE;
+		in.inhibit_reason = Soar::REASON_FAILSAFE;
 
 	} else if (motor_failed) {
-		in.inhibit_reason = soaring::REASON_MOTOR;
+		in.inhibit_reason = Soar::REASON_MOTOR;
 
 	} else if (TerrainFollower::guardActs(_tf_state)) {
 		// the ground guard climbs on the motor that GLIDE and THERMAL hold off
-		in.inhibit_reason = soaring::REASON_TERRAIN;
+		in.inhibit_reason = Soar::REASON_TERRAIN;
 
 	} else if (_battery_warning >= battery_status_s::WARNING_LOW) {
-		in.inhibit_reason = soaring::REASON_BATTERY;
+		in.inhibit_reason = Soar::REASON_BATTERY;
 
 	} else if (hrt_elapsed_time(&_time_soar_airspeed) > 1_s) {
-		in.inhibit_reason = soaring::REASON_AIRSPEED;
+		in.inhibit_reason = Soar::REASON_AIRSPEED;
 
 	} else if (!_home.valid_alt || !_home.valid_hpos || !_home.valid_lpos) {
-		in.inhibit_reason = soaring::REASON_HOME;
+		in.inhibit_reason = Soar::REASON_HOME;
 
 	} else {
-		in.inhibit_reason = soaring::REASON_NONE;
+		in.inhibit_reason = Soar::REASON_NONE;
 	}
 
 	in.armed = _control_mode.flag_armed;
-	in.allowed = in.inhibit_reason == soaring::REASON_NONE;
+	in.allowed = in.inhibit_reason == Soar::REASON_NONE;
 	in.operator_cmd = _soar_operator_cmd;
 	_soar_operator_cmd = 0;
 	in.x = _local_pos.x;
 	in.y = _local_pos.y;
+	in.xy_reset_counter = _local_pos.xy_reset_counter;
+	in.delta_x = _local_pos.delta_xy[0];
+	in.delta_y = _local_pos.delta_xy[1];
 	in.vn = _local_pos.vx;
 	in.ve = _local_pos.vy;
 	in.vz = _local_pos.vz;
+	in.vz_valid = _local_pos.v_z_valid;
 	in.height = _current_altitude - _home.alt;
 	in.cas = _airspeed_eas;
+	in.cas_valid = _airspeed_valid;
 	in.tas = _airspeed_tas;
 	in.roll = _roll;
 	in.yaw = _yaw;
@@ -183,7 +189,7 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 	_soaring.update(in, _soar_p, _soar_out);
 	soar_events(prev_state, prev_reason, in.height);
 
-	const soaring::Output &o = _soar_out;
+	const Soar::Output &o = _soar_out;
 	const bool changed = o.state != prev_state || o.reason != prev_reason;
 
 	if (changed || now - _time_soar_status >= 200_ms) {
@@ -193,12 +199,12 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 		status.state = (uint8_t)o.state;
 		status.reason = o.reason;
 		status.vario_te = o.vario_te;
-		status.vario_te_imu = o.vario_te_imu;
 		status.vario_netto = o.vario_netto;
 		status.vario_netto_slow = o.vario_netto_slow;
 		status.sink_polar = o.sink_polar;
 		status.climb_expected = o.climb_expected;
 		status.climb_avg = o.climb_avg;
+		status.thermal_climb = o.thermal_climb;
 		status.thermal_w = o.thermal_w;
 		status.thermal_r = o.thermal_r;
 		status.thermal_x = o.thermal_x;
@@ -236,37 +242,37 @@ FixedWingModeManager::soar_update(const hrt_abstime now)
 void
 FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev_reason, const float height)
 {
-	const soaring::Output &o = _soar_out;
+	const Soar::Output &o = _soar_out;
 	const bool new_inhibit = o.state == SoarState::INHIBIT && (prev_state != SoarState::INHIBIT || prev_reason != o.reason);
 
-	if (new_inhibit && o.reason == soaring::REASON_CONFIG) {
+	if (new_inhibit && o.reason == Soar::REASON_CONFIG) {
 		events::send<int32_t, float>(events::ID("soaring_refused_config"), events::Log::Warning,
 					     "soaring refused - COM_ACT_FAIL_ACT {1}, expected 3, FD_FW_TL_TIME {2:.1} s, expected above 0",
 					     _soar_act_fail_act, _param_fd_fw_tl_time.get());
 		return;
 	}
 
-	if (new_inhibit && o.reason == soaring::REASON_AIRSPEED && o.aspd_excess > 2.5f) {
+	if (new_inhibit && o.reason == Soar::REASON_AIRSPEED && o.aspd_excess > 2.5f) {
 		events::send<float, float>(events::ID("soaring_off_airspeed_turn"), events::Log::Warning,
 					   "soaring off  airspeed {1:.1} m/s, turn estimate {2:.1}", o.aspd_turn + o.aspd_excess, o.aspd_turn);
 		return;
 	}
 
-	if (new_inhibit && o.reason == soaring::REASON_OPERATOR) {
+	if (new_inhibit && o.reason == Soar::REASON_OPERATOR) {
 		events::send(events::ID("soaring_off_operator"), events::Log::Warning,
-			     "soaring off  operator command. SOAR_EN 0 then 1 restarts");
+			     "soaring off  operator command. SOAR_ENABLE 0 then 1 restarts");
 		return;
 	}
 
-	if (new_inhibit && o.reason == soaring::REASON_BAND) {
+	if (new_inhibit && o.reason == Soar::REASON_BAND) {
 		if (o.alt_max < o.alt_cut + 20.f) {
 			events::send<float, float>(events::ID("soaring_refused_ceiling"), events::Log::Warning,
-						   "soaring refused - ceiling {1:.0} m less than SOAR_ALT_CUT {2:.0} m plus 20 m. Raise SOAR_ALT_MAX or GF_MAX_VER_DIST",
+						   "soaring refused - ceiling {1:.0} m less than SOAR_ALT_CUTOFF {2:.0} m plus 20 m. Raise SOAR_ALT_MAX or GF_MAX_VER_DIST",
 						   o.alt_max, o.alt_cut);
 
 		} else {
 			events::send<float, float>(events::ID("soaring_refused_band"), events::Log::Warning,
-						   "soaring refused - SOAR_ALT_CUT {1:.0} m under SOAR_ALT_MIN {2:.0} m plus 30 m", o.alt_cut, o.alt_min);
+						   "soaring refused - SOAR_ALT_CUTOFF {1:.0} m under SOAR_ALT_MIN {2:.0} m plus 30 m", o.alt_cut, o.alt_min);
 		}
 
 		return;
@@ -281,34 +287,44 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 
 	if (prev_state == SoarState::THERMAL && on) {
 		switch (o.reason) {
-		case soaring::REASON_FLOOR:
+		case Soar::REASON_FLOOR:
 			events::send<float, float>(events::ID("soaring_thermal_left_floor"), events::Log::Info,
 						   "soaring thermal left  floor, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
 			break;
 
-		case soaring::REASON_WEAK_LIFT:
+		case Soar::REASON_WEAK_LIFT:
 			events::send<float, float>(events::ID("soaring_thermal_left_weak_lift"), events::Log::Info,
 						   "soaring thermal left  weak lift, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
 			break;
 
-		case soaring::REASON_CEILING:
+		case Soar::REASON_CEILING:
 			events::send<float, float>(events::ID("soaring_thermal_left_ceiling"), events::Log::Info,
 						   "soaring thermal left  ceiling, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
 			break;
 
-		case soaring::REASON_RADIUS:
+		case Soar::REASON_RADIUS:
 			events::send<float, float>(events::ID("soaring_thermal_left_radius"), events::Log::Info,
 						   "soaring thermal left  radius, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
 			break;
 
-		case soaring::REASON_ESTIMATOR:
+		case Soar::REASON_ESTIMATOR:
 			events::send<float, float>(events::ID("soaring_thermal_left_estimator"), events::Log::Info,
 						   "soaring thermal left  estimator, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
 			break;
 
-		case soaring::REASON_AIRSPEED_LOW:
+		case Soar::REASON_AIRSPEED_LOW:
 			events::send<float, float>(events::ID("soaring_thermal_left_airspeed_low"), events::Log::Info,
 						   "soaring thermal left  airspeed low, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
+			break;
+
+		case Soar::REASON_HEIGHT_LOST:
+			events::send<float, float>(events::ID("soaring_thermal_left_height_lost"), events::Log::Info,
+						   "soaring thermal left  height lost, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
+			break;
+
+		case Soar::REASON_DRIFT:
+			events::send<float, float>(events::ID("soaring_thermal_left_drift"), events::Log::Info,
+						   "soaring thermal left  drift, gained {1:.0} m in {2:.0} s", o.last_gain, o.last_time);
 			break;
 		}
 	}
@@ -319,55 +335,55 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 
 	} else if (was_on && !on) {
 		switch (o.reason) {
-		case soaring::REASON_MODE:
+		case Soar::REASON_MODE:
 			events::send(events::ID("soaring_off_mode"), events::Log::Info, "soaring off  mode");
 			break;
 
-		case soaring::REASON_FAILSAFE:
+		case Soar::REASON_FAILSAFE:
 			events::send(events::ID("soaring_off_failsafe"), events::Log::Info, "soaring off  failsafe");
 			break;
 
-		case soaring::REASON_AIRSPEED:
+		case Soar::REASON_AIRSPEED:
 			events::send(events::ID("soaring_off_airspeed"), events::Log::Info, "soaring off  airspeed");
 			break;
 
-		case soaring::REASON_BATTERY:
+		case Soar::REASON_BATTERY:
 			events::send(events::ID("soaring_off_battery"), events::Log::Info, "soaring off  battery");
 			break;
 
-		case soaring::REASON_HOME:
+		case Soar::REASON_HOME:
 			events::send(events::ID("soaring_off_home"), events::Log::Info, "soaring off  home");
 			break;
 
-		case soaring::REASON_RADIUS:
+		case Soar::REASON_RADIUS:
 			events::send(events::ID("soaring_off_radius"), events::Log::Info, "soaring off  radius");
 			break;
 
-		case soaring::REASON_MOTOR:
+		case Soar::REASON_MOTOR:
 			events::send(events::ID("soaring_off_motor"), events::Log::Warning, "soaring off  motor failure");
 			break;
 
-		case soaring::REASON_WIND:
+		case Soar::REASON_WIND:
 			events::send(events::ID("soaring_off_wind"), events::Log::Warning, "soaring off  wind");
 			break;
 
-		case soaring::REASON_TERRAIN:
+		case Soar::REASON_TERRAIN:
 			events::send(events::ID("soaring_off_terrain"), events::Log::Warning,
-				     "soaring off  terrain guard. SOAR_EN 0 then 1 restarts");
+				     "soaring off  terrain guard. SOAR_ENABLE 0 then 1 restarts");
 			break;
 
 		default:
-			events::send(events::ID("soaring_off_disabled"), events::Log::Info, "soaring off  SOAR_EN 0");
+			events::send(events::ID("soaring_off_disabled"), events::Log::Info, "soaring off  SOAR_ENABLE 0");
 			break;
 		}
 
 	} else if (prev_state == SoarState::CLIMB && o.state == SoarState::GLIDE) {
 		events::send<float>(events::ID("soaring_motor_off"), events::Log::Info, "soaring motor off  {1:.0} m", height);
 
-	} else if (o.state == SoarState::CLIMB && o.reason == soaring::REASON_FLOOR) {
+	} else if (o.state == SoarState::CLIMB && o.reason == Soar::REASON_FLOOR) {
 		events::send<float>(events::ID("soaring_motor_on_floor"), events::Log::Info, "soaring motor on  floor {1:.0} m", o.alt_floor);
 
-	} else if (o.state == SoarState::CLIMB && o.reason == soaring::REASON_AIRSPEED_LOW) {
+	} else if (o.state == SoarState::CLIMB && o.reason == Soar::REASON_AIRSPEED_LOW) {
 		events::send<float, float>(events::ID("soaring_motor_on_airspeed"), events::Log::Warning,
 					   "soaring motor on  airspeed {1:.1} m/s, expected {2:.1}", _airspeed_eas, o.cas_min + 2.f);
 

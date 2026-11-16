@@ -1016,6 +1016,46 @@ TEST(PortStates, NoNewThermalForMinimumCruiseAfterAnExit)
 	EXPECT_EQ(rig.out.thermal_count, count);
 }
 
+TEST(PortStates, NoThermalEntryWithinThirtyMetresOfTheCeiling)
+{
+	// with SOAR_MIN_CRSE_S 0 only the entry gate keeps a ceiling exit from re-entering on the next sample
+	Rig rig;
+	rig.p.min_crse_s = 0.f;
+	rig.toThermal();
+	rig.step(30.f);
+	ASSERT_EQ(rig.out.state, State::THERMAL);
+	const float h = 401.f - 5.f * rig.out.climb_avg;
+	ASSERT_EQ(holdHeight(rig, h, kDt), State::GLIDE);
+	const uint16_t count = rig.out.thermal_count;
+	EXPECT_EQ(holdHeight(rig, h, 10.f), State::GLIDE);
+	EXPECT_EQ(rig.out.thermal_count, count);
+	// 400 m less 30 m less 1 m
+	EXPECT_EQ(holdHeight(rig, 369.f, 1.f), State::THERMAL);
+	EXPECT_EQ(rig.out.thermal_count, count + 1);
+}
+
+TEST(PortStates, NoThermalEntryOnThePoweredClimbBeforeGlide)
+{
+	// the variometer reads the motor climb of an inhibited Hold as lift: w stands for it until the GLIDE stops the motor
+	Rig rig(true);
+	rig.p.min_crse_s = 0.f;
+	rig.in.allowed = false;
+	rig.w = 3.f;
+	rig.step(20.f);
+	ASSERT_EQ(rig.out.state, State::INHIBIT);
+	rig.in.allowed = true;
+
+	while (rig.out.state != State::GLIDE && rig.t < 60.f) {
+		rig.step(kDt);
+	}
+
+	ASSERT_EQ(rig.out.state, State::GLIDE);
+	rig.w = 0.f;
+	rig.step(10.f);
+	EXPECT_EQ(rig.out.state, State::GLIDE);
+	EXPECT_EQ(rig.out.thermal_count, 0);
+}
+
 TEST(PortStates, ThermalWeakExitOnlyAfterMinimumTime)
 {
 	Rig rig;
