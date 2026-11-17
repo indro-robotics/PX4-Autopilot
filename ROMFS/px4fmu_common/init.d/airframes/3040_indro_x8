@@ -90,8 +90,8 @@ param set-default MIS_LP_AHEAD 15
 param set-default MIS_LP_OFFSET 6
 # Written final of 200 m from the orbit exit.
 param set-default MIS_LP_DIST 200
-# Written orbit at 22 m: over the 200 m final a 6.28 deg slope, inside FW_LND_ANG.
-param set-default MIS_LP_ALT 22
+# Written orbit at 15.5 m: over the 200 m final a 4.43 deg slope, inside FW_LND_ANG.
+param set-default MIS_LP_ALT 15.5
 param set-default MIS_TAKEOFF_ALT 45
 # Arming is refused on a mission without a landing.
 param set-default MIS_TKO_LAND_REQ 2
@@ -129,7 +129,7 @@ param set-default FW_T_SINK_MAX 3.0
 param set-default FW_T_THR_LOW_HGT 30
 # Glide reach per metre of height: a setpoint farther away raises the wings-level height.
 param set-default FW_TL_GLIDE 8
-# Wings level below 20 m after a thrust loss: the 22 m pattern orbit stays free to turn.
+# Wings level below 20 m after a thrust loss.
 param set-default FW_TL_LVL_ALT 20
 param set-default FW_WING_SPAN 2.12
 param set-default WEIGHT_BASE 3.78
@@ -156,10 +156,14 @@ param set-default FW_TKO_PMIN_REL 4
 param set-default FW_THR_IDLE 0.0
 
 # LAND
+# The landing configuration lowers the minimum airspeed to 0.82 of FW_AIRSPD_MIN, 11.5 m/s, under FW_LND_AIRSPD.
+param set-default FW_AIRSPD_FLP_SC 0.82
 # No abort on a terrain timeout: an aborted landing loiters until commanded.
 param set-default FW_LND_ABORT 1
-param set-default FW_LND_AIRSPD 14
-param set-default FW_LND_ANG 6.3
+# Final at 1.22 times FW_AIRSPD_STALL.
+param set-default FW_LND_AIRSPD 11.6
+# A final steeper than the idle glide, about 5.2 deg at 14 m/s, gains airspeed at zero thrust and floats long.
+param set-default FW_LND_ANG 4.5
 param set-default FW_LND_EARLYCFG 1
 # Integral of the flare sink error, for a steady error.
 param set-default FW_LND_FL_KI 2.5
