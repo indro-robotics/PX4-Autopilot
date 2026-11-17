@@ -247,7 +247,7 @@ FixedWingModeManager::soar_events(const SoarState prev_state, const uint8_t prev
 
 	if (new_inhibit && o.reason == Soar::REASON_CONFIG) {
 		events::send<int32_t, float>(events::ID("soaring_refused_config"), events::Log::Warning,
-					     "soaring refused - COM_ACT_FAIL_ACT {1}, expected 3, FD_FW_TL_TIME {2:.1} s, expected above 0",
+					     "soaring refused - COM_ACT_FAIL_ACT {1}, expected 2 or 3, FD_FW_TL_TIME {2:.1} s, expected above 0",
 					     _soar_act_fail_act, _param_fd_fw_tl_time.get());
 		return;
 	}

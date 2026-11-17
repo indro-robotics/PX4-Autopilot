@@ -52,8 +52,8 @@ param set-default EKF2_RNG_QLTY_T 0.2
 
 # COM
 param set-default COM_ARM_MIS_REQ 1
-# Return on the thrust loss flag: the glide heads for the landing pattern.
-param set-default COM_ACT_FAIL_ACT 3
+# Land on the thrust loss flag: the glide circles down to a landing where it is.
+param set-default COM_ACT_FAIL_ACT 2
 param set-default COM_ARM_SDCARD 2
 param set-default COM_BAT_DISC_T 2.0
 # A failsafe acts at once: a Hold on final loiters near the ground.

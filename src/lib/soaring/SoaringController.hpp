@@ -176,8 +176,8 @@ public:
 	// [m] estimate shift of one update: the travel of the base plus the lean in the wind it leaves
 	static matrix::Vector2f drift_step(const matrix::Vector2f &wind, float dt, float climb, float strength, float drift);
 
-	// a motor that stays dead at the restart is flagged by the thrust loss check alone, and only Return acts on its flag
-	static bool configOk(int32_t act_fail_act, float tl_time) { return act_fail_act == 3 && tl_time > 0.f; }
+	// a motor that stays dead at the restart is flagged by the thrust loss check alone, and only Land and Return act on its flag
+	static bool configOk(int32_t act_fail_act, float tl_time) { return (act_fail_act == 2 || act_fail_act == 3) && tl_time > 0.f; }
 
 private:
 	Variometer::PolarParams _polarParams{};
