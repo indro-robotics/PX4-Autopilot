@@ -2223,14 +2223,12 @@ void Commander::updateTunes()
 		_arm_tune_played = true;
 
 	} else if (!_vehicle_status.usb_connected &&
-		   (_vehicle_status.hil_state != vehicle_status_s::HIL_STATE_ON) &&
 		   (_battery_warning == battery_status_s::WARNING_CRITICAL)) {
 
 		/* play tune on battery critical */
 		set_tune(tune_control_s::TUNE_ID_BATTERY_WARNING_FAST);
 
-	} else if ((_vehicle_status.hil_state != vehicle_status_s::HIL_STATE_ON) &&
-		   (_battery_warning == battery_status_s::WARNING_LOW)) {
+	} else if (_battery_warning == battery_status_s::WARNING_LOW) {
 		/* play tune on battery warning */
 		set_tune(tune_control_s::TUNE_ID_BATTERY_WARNING_SLOW);
 
@@ -2311,10 +2309,7 @@ void Commander::handleAutoDisarm()
 		bool auto_disarm = _actuator_armed.kill;
 
 		// auto disarm if locked down to avoid user confusion
-		//  skipped in HITL where lockdown is enabled for safety
-		if (_vehicle_status.hil_state != vehicle_status_s::HIL_STATE_ON) {
-			auto_disarm |= _actuator_armed.lockdown;
-		}
+		auto_disarm |= _actuator_armed.lockdown;
 
 		//don't disarm if throw launch is in progress
 		auto_disarm &= !_multicopter_throw_launch.isThrowLaunchInProgress();
@@ -2705,20 +2700,7 @@ int Commander::task_spawn(int argc, char *argv[])
 
 Commander *Commander::instantiate(int argc, char *argv[])
 {
-	Commander *instance = new Commander();
-
-	if (instance) {
-		if (argc >= 2 && !strcmp(argv[1], "-h")) {
-			instance->enable_hil();
-		}
-	}
-
-	return instance;
-}
-
-void Commander::enable_hil()
-{
-	_vehicle_status.hil_state = vehicle_status_s::HIL_STATE_ON;
+	return new Commander();
 }
 
 void Commander::dataLinkCheck()
@@ -3036,7 +3018,6 @@ The commander module contains the state machine for mode switching and failsafe 
 
 	PRINT_MODULE_USAGE_NAME("commander", "system");
 	PRINT_MODULE_USAGE_COMMAND("start");
-	PRINT_MODULE_USAGE_PARAM_FLAG('h', "Enable HIL mode", true);
 #ifndef CONSTRAINED_FLASH
 	PRINT_MODULE_USAGE_COMMAND_DESCR("calibrate", "Run sensor calibration");
 	PRINT_MODULE_USAGE_ARG("mag|baro|accel|gyro|level|esc|airspeed", "Calibration type", false);

@@ -52,6 +52,41 @@ PARAM_DEFINE_INT32(SIM_GZ_EN, 0);
 PARAM_DEFINE_INT32(SIM_GZ_EN_LIDAR, 1);
 
 /**
+ * Faults of the two downward lidars in Gazebo bridge
+ *
+ * Takes effect on the next sample. A frozen lidar repeats its last distance; a lost one publishes nothing.
+ *
+ * @group Simulation
+ * @min 0
+ * @max 15
+ * @bit 0 lidar frozen
+ * @bit 1 lidar2 frozen
+ * @bit 2 lidar lost
+ * @bit 3 lidar2 lost
+ */
+PARAM_DEFINE_INT32(SIM_GZ_RNG_FAULT, 0);
+
+/**
+ * Range finder minimum range
+ *
+ * The DroneCAN parameter of the aircraft; Gazebo bridge reports it as each lidar's minimum distance.
+ *
+ * @unit m
+ * @group Simulation
+ */
+PARAM_DEFINE_FLOAT(UAVCAN_RNG_MIN, 0.0f);
+
+/**
+ * Range finder maximum range
+ *
+ * The DroneCAN parameter of the aircraft; Gazebo bridge reports it as each lidar's maximum distance.
+ *
+ * @unit m
+ * @group Simulation
+ */
+PARAM_DEFINE_FLOAT(UAVCAN_RNG_MAX, 999.0f);
+
+/**
  * Enable optical flow sensor in Gazebo bridge
  *
  * @boolean

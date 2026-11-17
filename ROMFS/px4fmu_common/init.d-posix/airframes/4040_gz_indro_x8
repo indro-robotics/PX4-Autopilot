@@ -1,0 +1,66 @@
+#!/bin/sh
+#
+# @name InDro Skywalker X8 SITL
+# @type Flying Wing
+#
+
+# Stock startup reaches the host's MAVLink router ports and DDS port 8888, and instance 0 takes system ID 1.
+x8_sim_refuse() {
+	echo "ERROR [init] 4040_gz_indro_x8 refused - $1"
+	echo "FIX: start the simulation with sim_start"
+	exit 1
+}
+# Allow-list: only the session's values pass.
+[ "$px4_instance" = 1 ] || x8_sim_refuse "px4 instance $px4_instance, expected 1"
+[ "$PX4_UXRCE_DDS_PORT" = 14609 ] || x8_sim_refuse "PX4_UXRCE_DDS_PORT ${PX4_UXRCE_DDS_PORT:-unset}, expected 14609"
+x8_sim_mavlink=$(IFS=:; for d in $PATH; do [ -f "${d:-.}/px4-rc.mavlink" ] && echo "${d:-.}/px4-rc.mavlink" && break; done)
+# The file rcS sources holds printable ASCII and tab alone, and each line is blank, a comment or one sim link in the session's option order; the stock file fails this.
+x8_sim_link='mavlink start( -x)? -u 1460[0-9] -o 1460[0-9]( -r [0-9]+)?( -f)?( -m [a-z]+)?'
+[ $(LC_ALL=C tr -d ' -~\t\n' < "$x8_sim_mavlink" | wc -c) -eq 0 ] \
+	&& LC_ALL=C grep -Eq "^$x8_sim_link\$" "$x8_sim_mavlink" \
+	&& ! LC_ALL=C grep -Evq "^([[:blank:]]*(#.*)?|$x8_sim_link)\$" "$x8_sim_mavlink" \
+	|| x8_sim_refuse "px4-rc.mavlink line outside the sim links"
+
+. ${R}etc/init.d/airframes/3040_indro_x8
+
+# PX4 attaches to the session's server and never starts gz or its window.
+PX4_GZ_STANDALONE=1
+
+param set-default SIM_GZ_EN 1
+param set-default EKF2_REQ_GPS_H 10
+# Simulated IMU and magnetometer are body-aligned.
+param set-default SENS_BOARD_ROT 0
+# The model carries no Gazebo magnetometer: its frame is mirrored, so the field comes from ground truth and the world magnetic model.
+param set-default SENS_EN_MAGSIM 1
+
+# Elevon travel in degrees, equal to the model's joint limits.
+param set-default SIM_GZ_SV_FUNC1 201
+param set-default SIM_GZ_SV_FUNC2 202
+param set-default SIM_GZ_SV_MAXA1 20
+param set-default SIM_GZ_SV_MAXA2 20
+param set-default SIM_GZ_SV_MINA1 -20
+param set-default SIM_GZ_SV_MINA2 -20
+
+# ESC outputs are rotor speeds in rad/s.
+param set-default SIM_GZ_EC_FUNC1 101
+param set-default SIM_GZ_EC_MAX1 764
+param set-default SIM_GZ_EC_MIN1 0
+# The bridge reports a stopped rotor as an unarmed ESC, which disarms the launcher wait; the aircraft's PWM ESC reports nothing.
+param set-default FD_ESCS_EN 0
+
+# sim_fail motor: failure injection on, and the stopped motor leaves the allocation.
+param set-default SYS_FAILURE_EN 1
+param set-default CA_FAILURE_MODE 1
+
+# Rate gains of the simulated wing, from autotune; the aircraft takes its own.
+param set-default FW_PR_FF 0.6667
+param set-default FW_PR_I 1.0
+param set-default FW_PR_P 0.1787
+param set-default FW_P_TC 0.4
+param set-default FW_RR_FF 0.4533
+param set-default FW_RR_I 0.19
+param set-default FW_RR_P 0.1825
+param set-default FW_R_TC 0.3
+
+# Level trim of the simulated wing at 18 m/s and 3.78 kg.
+param set-default FW_THR_TRIM 0.39

@@ -654,35 +654,6 @@ Mavlink::setup_flow_control(enum FLOW_CONTROL_MODE mode)
 	return ret;
 }
 
-int
-Mavlink::set_hil_enabled(bool hil_enabled)
-{
-	int ret = OK;
-
-	/* enable HIL (only on links with sufficient bandwidth) */
-	if (hil_enabled && !_hil_enabled && _datarate > 5000) {
-		_hil_enabled = true;
-		ret = configure_stream("HIL_ACTUATOR_CONTROLS", 200.0f);
-
-		if (_param_sys_hitl.get() == 2) {		// Simulation in Hardware enabled ?
-			configure_stream("HIL_STATE_QUATERNION", 25.0f); // ground truth to display the SIH
-
-		} else {
-			configure_stream("HIL_STATE_QUATERNION", 0.0f);
-		}
-	}
-
-	/* disable HIL */
-	if (!hil_enabled && _hil_enabled) {
-		_hil_enabled = false;
-		ret = configure_stream("HIL_ACTUATOR_CONTROLS", 0.0f);
-
-		configure_stream("HIL_STATE_QUATERNION", 0.0f);
-	}
-
-	return ret;
-}
-
 unsigned
 Mavlink::get_free_tx_buf()
 {
@@ -2542,9 +2513,6 @@ void Mavlink::handleStatus()
 		vehicle_status_s vehicle_status;
 
 		if (_vehicle_status_sub.copy(&vehicle_status)) {
-			/* switch HIL mode if required */
-			set_hil_enabled(vehicle_status.hil_state == vehicle_status_s::HIL_STATE_ON);
-
 			if (_mode == MAVLINK_MODE_IRIDIUM) {
 
 				if (_transmitting_enabled && (!vehicle_status.gcs_connection_lost || (vehicle_status.high_latency_data_link_lost &&

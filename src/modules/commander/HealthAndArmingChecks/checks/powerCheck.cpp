@@ -50,11 +50,6 @@ void PowerChecks::checkAndReport(const Context &context, Report &reporter)
 		return;
 	}
 
-	if (context.status().hil_state == vehicle_status_s::HIL_STATE_ON) {
-		// Ignore power check in HITL.
-		return;
-	}
-
 	if (!context.status().power_input_valid) {
 
 		/* EVENT

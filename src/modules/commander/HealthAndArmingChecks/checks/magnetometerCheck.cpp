@@ -56,20 +56,14 @@ void MagnetometerChecks::checkAndReport(const Context &context, Report &reporter
 			is_valid = _sensor_mag_sub[instance].copy(&mag_data) && (mag_data.device_id != 0) && (mag_data.timestamp != 0)
 				   && (hrt_elapsed_time(&mag_data.timestamp) < 1_s);
 
-			if (context.status().hil_state == vehicle_status_s::HIL_STATE_ON) {
-				is_calibration_valid = true;
-				num_enabled_and_valid_calibration++;
+			int calibration_index = calibration::FindCurrentCalibrationIndex("MAG", mag_data.device_id);
+			is_calibration_valid = (calibration_index >= 0);
 
-			} else {
-				int calibration_index = calibration::FindCurrentCalibrationIndex("MAG", mag_data.device_id);
-				is_calibration_valid = (calibration_index >= 0);
+			if (is_calibration_valid) {
+				int priority = calibration::GetCalibrationParamInt32("MAG", "PRIO", calibration_index);
 
-				if (is_calibration_valid) {
-					int priority = calibration::GetCalibrationParamInt32("MAG", "PRIO", calibration_index);
-
-					if (priority > 0) {
-						++num_enabled_and_valid_calibration;
-					}
+				if (priority > 0) {
+					++num_enabled_and_valid_calibration;
 				}
 			}
 

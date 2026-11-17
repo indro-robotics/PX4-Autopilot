@@ -2568,6 +2568,12 @@ void EKF2::UpdateRangeSample(ekf2_timestamps_s &ekf2_timestamps)
 		    && (distance_sensor.timestamp > timestamp_stale)
 		    && (distance_sensor.orientation == distance_sensor_s::ROTATION_DOWNWARD_FACING)) {
 
+			// a frozen reading averaged with a live one holds the height above ground through the flare
+			if (_param_ekf2_rng_frz_en.get()
+			    && !_range_stuck[i].live(distance_sensor.current_distance, -_ekf.getPosition()(2), distance_sensor.timestamp)) {
+				distance_sensor.signal_quality = 0;
+			}
+
 			if (distance_sensor.timestamp > newest.timestamp) {
 				newest = distance_sensor;
 			}
@@ -2875,8 +2881,7 @@ int EKF2::task_spawn(int argc, char *argv[])
 
 		while ((multi_instances_allocated < multi_instances)
 		       && (vehicle_status_sub.get().arming_state != vehicle_status_s::ARMING_STATE_ARMED)
-		       && ((hrt_elapsed_time(&time_started) < 30_s)
-			   || (vehicle_status_sub.get().hil_state == vehicle_status_s::HIL_STATE_ON))) {
+		       && (hrt_elapsed_time(&time_started) < 30_s)) {
 
 			vehicle_status_sub.update();
 

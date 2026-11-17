@@ -187,8 +187,6 @@ public:
 	 */
 	uint16_t actualFailsafeValue(int index) const;
 
-	void setIgnoreLockdown(bool ignore_lockdown) { _ignore_lockdown = ignore_lockdown; }
-
 	/**
 	 * Set the maximum number of outputs. This can only be used to reduce the maximum.
 	 */
@@ -267,7 +265,6 @@ private:
 	unsigned _max_topic_update_interval_us{0}; ///< max topic update interval (0=unlimited)
 
 	bool _throttle_armed{false};
-	bool _ignore_lockdown{false}; ///< if true, ignore the _armed.lockdown flag (for HIL outputs)
 
 	const SchedulingPolicy _scheduling_policy;
 	const bool _support_esc_calibration;

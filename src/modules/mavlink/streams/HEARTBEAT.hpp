@@ -83,10 +83,6 @@ private:
 				base_mode |= MAV_MODE_FLAG_SAFETY_ARMED;
 			}
 
-			if (vehicle_status.hil_state == vehicle_status_s::HIL_STATE_ON) {
-				base_mode |= MAV_MODE_FLAG_HIL_ENABLED;
-			}
-
 			if (vehicle_control_mode.flag_control_manual_enabled) {
 				base_mode |= MAV_MODE_FLAG_MANUAL_INPUT_ENABLED;
 			}
@@ -120,7 +116,7 @@ private:
 
 			// system_status overrides
 			if (actuator_armed.termination || actuator_armed.kill
-			    || (actuator_armed.lockdown && vehicle_status.hil_state == vehicle_status_s::HIL_STATE_OFF)) {
+			    || actuator_armed.lockdown) {
 
 				system_status = MAV_STATE_FLIGHT_TERMINATION;
 			}

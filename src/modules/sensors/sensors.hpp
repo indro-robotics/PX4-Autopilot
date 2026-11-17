@@ -94,7 +94,7 @@ using namespace time_literals;
 class Sensors : public ModuleBase<Sensors>, public ModuleParams, public px4::ScheduledWorkItem
 {
 public:
-	explicit Sensors(bool hil_enabled);
+	Sensors();
 	~Sensors() override;
 
 	/** @see ModuleBase */
@@ -127,8 +127,6 @@ private:
 	void		InitializeVehicleMagnetometer();
 
 	void		InitializeVehicleOpticalFlow();
-
-	const bool _hil_enabled;	/**< if true, HIL is active */
 
 	perf_counter_t	_loop_perf;	/**< loop performance counter */
 

@@ -1228,7 +1228,7 @@ FixedWingModeManager::control_auto_takeoff(const hrt_abstime &now, const float c
 
 			_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-			_ctrl_configuration_handler.setPitchMin(radians(_takeoff_pitch_min.get()));
+			applyTakeoffFloor();
 			_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 			_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
 			_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
@@ -1369,7 +1369,7 @@ FixedWingModeManager::control_auto_takeoff_no_nav(const hrt_abstime &now, const 
 
 		_longitudinal_ctrl_sp_pub.publish(fw_longitudinal_control_sp);
 
-		_ctrl_configuration_handler.setPitchMin(radians(_takeoff_pitch_min.get()));
+		applyTakeoffFloor();
 		_ctrl_configuration_handler.setThrottleMax(max_takeoff_throttle);
 		_ctrl_configuration_handler.setClimbRateTarget(_param_fw_t_clmb_max.get());
 		_ctrl_configuration_handler.setDisableUnderspeedProtection(true);
@@ -2275,7 +2275,28 @@ FixedWingModeManager::reset_takeoff_state()
 
 	_launch_detected = false;
 
+	_takeoff_floor_released = false;
+
 	_takeoff_ground_alt = _current_altitude;
+}
+
+void
+FixedWingModeManager::applyTakeoffFloor()
+{
+	_takeoff_floor_released = _takeoff_floor_released || (_param_fw_tko_pmin_alt.get() > FLT_EPSILON
+				  && _current_altitude - _takeoff_ground_alt > _param_fw_tko_pmin_alt.get());
+
+	// a stopped motor held at FW_TKO_PITCH_MIN loses airspeed until the failsafe changes the mode
+	const bool motor_failed = (_vehicle_status.failure_detector_status & vehicle_status_s::FAILURE_MOTOR) != 0
+				  && _param_fw_tko_pmin_alt.get() > FLT_EPSILON;
+
+	_ctrl_configuration_handler.setPitchMin(radians((_takeoff_floor_released || motor_failed) ?
+						_param_fw_tko_pmin_rel.get() : _takeoff_pitch_min.get()));
+
+	if (_launchDetector.getLaunchDetected() == launch_detection_status_s::STATE_FLYING
+	    && _param_fw_tko_spdwt.get() >= 0.f) {
+		_ctrl_configuration_handler.setSpeedWeight(_param_fw_tko_spdwt.get());
+	}
 }
 
 void

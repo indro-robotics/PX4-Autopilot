@@ -31,6 +31,8 @@ param set-default SER_TEL2_BAUD 3000000
 param set-default UXRCE_DDS_CFG 102
 param set-default UXRCE_DDS_DOM_ID 0
 param set-default UXRCE_DDS_PTCFG 1
+# The system clock follows the UTC time of the DDS agent.
+param set-default UXRCE_DDS_SYNCC 1
 
 # SENSORS
 param set-default SENS_BOARD_ROT 14
@@ -39,19 +41,30 @@ param set-default SYS_HAS_NUM_DIST 1
 
 # UAVCAN
 param set-default UAVCAN_ENABLE 2
-param set-default UAVCAN_RNG_MAX 50.0
+# A lidar reading above 30 m is left out of the height estimate; the approach orbit flies inside this range.
+param set-default UAVCAN_RNG_MAX 30.0
 param set-default UAVCAN_RNG_MIN 0.08
 param set-default UAVCAN_SUB_DPRES 1
 param set-default UAVCAN_SUB_RNG 1
 
 # EKF2
-# A quality hold longer than the 1 s terrain timeout aborts a mission landing on one bad range sample.
+# Range data counts again 0.2 s after a bad sample: the flare height comes from it.
 param set-default EKF2_RNG_QLTY_T 0.2
+# A lidar that repeats its reading is left out of the height above ground.
+param set-default EKF2_RNG_FRZ_EN 1
 
 # COM
+param set-default COM_ARM_MIS_REQ 1
 param set-default COM_ARM_SDCARD 2
 param set-default COM_BAT_DISC_T 2.0
-param set-default COM_LOW_BAT_ACT 3
+# A failsafe acts at once: a Hold on final loiters near the ground.
+param set-default COM_FAIL_ACT_T 0
+# Return at emergency battery too: Land circles down wherever the wing is.
+param set-default COM_LOW_BAT_ACT 1
+# A motor failure flag starts a Land: the wing circles down to a landing where it is.
+param set-default COM_ACT_FAIL_ACT 2
+# A position error estimate above 10 m starts the Return, about 30 s after a GPS loss.
+param set-default COM_POS_LOW_EPH 10
 param set-default COM_PREARM_MODE 2
 param set-default COM_RC_IN_MODE 0
 param set-default COM_RC_LOSS_T 2.0
@@ -59,16 +72,24 @@ param set-default GF_ACTION 3
 param set-default GF_MAX_HOR_DIST 500
 param set-default GF_MAX_VER_DIST 60
 param set-default NAV_DLL_ACT 2
+# A wind estimate above 6 m/s raises a warning.
+param set-default COM_WIND_WARN 6
 
 # NAV
 # Takeoff holds at 45 m and Return at 30 m; the fence sits at 60 m.
-# A landing abort climbs this far above the height it starts from.
-param set-default MIS_LND_ABRT_ALT 10
 param set-default MIS_TAKEOFF_ALT 45
+# Arming is refused on a mission without a landing.
+param set-default MIS_TKO_LAND_REQ 2
+# The approach orbit exits within 2 m of its height, so the final starts on the glide slope.
+param set-default NAV_FW_ALTL_RAD 2
 param set-default NAV_LOITER_RAD 60
 param set-default RTL_DESCEND_ALT 30
+# Return to home or a rally point lands instead of loitering.
+param set-default RTL_LAND_DELAY 0
 param set-default RTL_LOITER_RAD 60
 param set-default RTL_RETURN_ALT 30
+# Return flies the stored landing pattern.
+param set-default RTL_TYPE 1
 
 # RC
 param set-default RC_SBUS_PRT_CFG 300
@@ -77,41 +98,77 @@ param set-default RC_SBUS_PRT_CFG 300
 # The airframe manual limits speed to 85 km/h above 3.2 kg.
 param set-default FW_AIRSPD_MAX 23.0
 param set-default FW_AIRSPD_MIN 14.0
-param set-default FW_AIRSPD_STALL 10.5
+param set-default FW_AIRSPD_STALL 9.5
 param set-default FW_AIRSPD_TRIM 18.0
 param set-default FW_P_LIM_MAX 30.0
 # Stock wings at 3.78 kg, 18 % over the airframe limit: pull-ups held near 2 g.
 param set-default FW_P_RMAX_NEG 30.0
 param set-default FW_P_RMAX_POS 30.0
 param set-default FW_R_LIM 50.0
-param set-default FW_WING_HEIGHT 0.1
+# Wings held level below 3.5 m: the roll-out from an orbit bank takes that height at landing sink.
+param set-default FW_WING_HEIGHT 3.5
 # Climb rate held low until a full-throttle climb is measured.
 param set-default FW_T_CLMB_MAX 3.0
+param set-default FW_T_HRATE_FF 0.7
+param set-default FW_T_SINK_MAX 3.0
+param set-default FW_T_SPDWEIGHT 0.5
+param set-default FW_T_THR_LOW_HGT 30
 param set-default FW_WING_SPAN 2.12
 param set-default WEIGHT_BASE 3.78
 param set-default WEIGHT_GROSS 3.78
 
 # LAUNCH
 param set-default FW_LAUN_AC_T 0.1
-param set-default FW_LAUN_AC_THLD 20.0
+param set-default FW_LAUN_AC_THLD 15
 param set-default FW_LAUN_DETCN_ON 1
-param set-default FW_LAUN_MOT_DEL 0.5
+# Motor start 1.1 s after the launch: the slingshot's line is under the aircraft until the pull has ended.
+param set-default FW_LAUN_MOT_DEL 1.1
+# Takeoff pitch flies FW_TKO_AIRSPD alone: a weak motor costs climb rate before airspeed.
+param set-default FW_TKO_SPDWT 2
+# Takeoff pitch floor at FW_TKO_PMIN_REL above 5 m: a motor that stops in the climb pitches down for FW_TKO_AIRSPD.
+param set-default FW_TKO_PMIN_ALT 5
+# At a 4 deg floor a motor cut in the climb glides at 10.6 m/s, 1.12 times FW_AIRSPD_STALL.
+param set-default FW_TKO_PMIN_REL 4
 # Pusher stopped on the launcher and commanded to zero in the flare.
 param set-default FW_THR_IDLE 0.0
 
 # LAND
-param set-default FW_LND_FL_PMAX 15.0
-param set-default FW_LND_FL_TIME 0.5
+# The landing configuration lowers the minimum airspeed to 0.82 of FW_AIRSPD_MIN, 11.5 m/s, under FW_LND_AIRSPD.
+param set-default FW_AIRSPD_FLP_SC 0.82
+# No abort on a terrain timeout: an aborted landing loiters until commanded.
+param set-default FW_LND_ABORT 1
+# Final at 1.22 times FW_AIRSPD_STALL.
+param set-default FW_LND_AIRSPD 11.6
+# A 4.5 deg final sinks about 0.9 m/s in calm air; a mission with a steeper approach is rejected.
+param set-default FW_LND_ANG 4.5
+param set-default FW_LND_EARLYCFG 1
+# Flare pitch ceiling equal to the floor: the flare holds a fixed 5 deg.
+param set-default FW_LND_FL_PMAX 5
+# Flare pitch floor 5 deg: the flare arrests the sink and the wing touches down above the stall.
+param set-default FW_LND_FL_PMIN 5
+# Thrust ramps to idle and the flare pitch reaches 5 deg within 0.1 s of the flare start.
+param set-default FW_LND_FL_TIME 0.1
+# Flare from 1.0 m: a small flare that arrests the sink and does not hold the wing off.
 param set-default FW_LND_FLALT 1.0
+param set-default FW_LND_THRTC_SC 0.2
 # The pitot reads wind on the parked wing.
 param set-default LNDFW_AIRSPD_MAX 8.0
 
 # AUX
 param set-default PWM_AUX_DIS1 1500
 param set-default PWM_AUX_DIS2 1500
+# Disarmed sends the ESC's calibrated bottom, its brake command.
+param set-default PWM_AUX_DIS5 1000
+# Flight termination sends the disarmed value.
+param set-default PWM_AUX_FAIL5 -1
 param set-default PWM_AUX_FUNC1 201
 param set-default PWM_AUX_FUNC2 202
 param set-default PWM_AUX_FUNC5 101
+# Output 6 stays unassigned: the ESC's reverse brake is never commanded.
+param set-default PWM_AUX_FUNC6 0
+param set-default PWM_AUX_MAX5 2000
+# Zero throttle sends the ESC's calibrated bottom: the brake stops the propeller.
+param set-default PWM_AUX_MIN5 1000
 param set-default PWM_AUX_TIM0 50
 
 # POWER

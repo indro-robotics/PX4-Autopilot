@@ -295,6 +295,9 @@ private:
 	// true if a launch, specifically using the launch detector, has been detected
 	bool _launch_detected{false};
 
+	// set once above FW_TKO_PMIN_ALT, so a motor that stops later is not pitched up again on the way down
+	bool _takeoff_floor_released{false};
+
 	// [deg] global position of the vehicle at the time launch is detected (using launch detector) or takeoff is started (runway)
 	Vector2d _takeoff_init_position{0, 0};
 
@@ -649,6 +652,7 @@ private:
 	float get_manual_airspeed_setpoint();
 
 	void reset_takeoff_state();
+	void applyTakeoffFloor();
 	void reset_landing_state();
 
 	/**
@@ -873,6 +877,9 @@ private:
 		(ParamInt<px4::params::FW_LND_NUDGE>) _param_fw_lnd_nudge,
 		(ParamInt<px4::params::FW_LND_ABORT>) _param_fw_lnd_abort,
 		(ParamFloat<px4::params::FW_TKO_AIRSPD>) _param_fw_tko_airspd,
+		(ParamFloat<px4::params::FW_TKO_SPDWT>) _param_fw_tko_spdwt,
+		(ParamFloat<px4::params::FW_TKO_PMIN_ALT>) _param_fw_tko_pmin_alt,
+		(ParamFloat<px4::params::FW_TKO_PMIN_REL>) _param_fw_tko_pmin_rel,
 		(ParamFloat<px4::params::RWTO_PSP>) _param_rwto_psp,
 		(ParamBool<px4::params::FW_LAUN_DETCN_ON>) _param_fw_laun_detcn_on,
 		(ParamFloat<px4::params::FW_AIRSPD_MAX>) _param_fw_airspd_max,

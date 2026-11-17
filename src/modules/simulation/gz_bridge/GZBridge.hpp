@@ -127,7 +127,7 @@ private:
 	void poseInfoCallback(const gz::msgs::Pose_V &msg);
 	void odometryCallback(const gz::msgs::OdometryWithCovariance &msg);
 	void navSatCallback(const gz::msgs::NavSat &msg);
-	void laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg);
+	void laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg, uint8_t index);
 	void laserScanCallback(const gz::msgs::LaserScan &msg);
 	void opticalFlowCallback(const px4::msgs::OpticalFlow &msg);
 	void magnetometerCallback(const gz::msgs::Magnetometer &msg);
@@ -141,7 +141,7 @@ private:
 
 	uORB::SubscriptionInterval                    _parameter_update_sub{ORB_ID(parameter_update), 1_s};
 
-	uORB::Publication<distance_sensor_s>          _distance_sensor_pub{ORB_ID(distance_sensor)};
+	uORB::PublicationMulti<distance_sensor_s>     _distance_sensor_pub[2] {{ORB_ID(distance_sensor)}, {ORB_ID(distance_sensor)}};
 	uORB::Publication<differential_pressure_s>    _differential_pressure_pub{ORB_ID(differential_pressure)};
 	uORB::Publication<obstacle_distance_s>        _obstacle_distance_pub{ORB_ID(obstacle_distance)};
 	uORB::Publication<vehicle_angular_velocity_s> _angular_velocity_ground_truth_pub{ORB_ID(vehicle_angular_velocity_groundtruth)};
@@ -175,6 +175,11 @@ private:
 	const std::string _model_name;
 
 	float _temperature{288.15};  // 15 degrees
+
+	param_t _param_sim_gz_rng_fault{param_find("SIM_GZ_RNG_FAULT")};
+	float _range_last[2] {NAN, NAN};
+	float _rng_min{0.f};
+	float _rng_max{999.f};
 
 	bool _realtime_clock_set{false};
 	gz::transport::Node _node;

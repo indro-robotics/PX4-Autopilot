@@ -50,6 +50,8 @@ GZBridge::GZBridge(const std::string &world, const std::string &model_name) :
 	_model_name(model_name)
 {
 	updateParams();
+	param_get(param_find("UAVCAN_RNG_MIN"), &_rng_min);
+	param_get(param_find("UAVCAN_RNG_MAX"), &_rng_max);
 }
 
 GZBridge::~GZBridge()
@@ -265,12 +267,22 @@ bool GZBridge::subscribeLaserScan(bool required)
 
 bool GZBridge::subscribeDistanceSensor(bool required)
 {
-	std::string lidar_sensor = "/world/" + _world_name + "/model/" + _model_name +
-				   "/link/lidar_sensor_link/sensor/lidar/scan";
+	static constexpr const char *range_links[2] {"lidar_sensor_link/sensor/lidar", "lidar2_sensor_link/sensor/lidar2"};
 
-	if (!_node.Subscribe(lidar_sensor, &GZBridge::laserScantoLidarSensorCallback, this)) {
-		PX4_WARN("failed to subscribe to %s", lidar_sensor.c_str());
-		return required ? false : true;
+	// A sensor the model lacks never publishes, so its distance_sensor instance never appears.
+	for (uint8_t i = 0; i < 2; i++) {
+		std::string topic = "/world/" + _world_name + "/model/" + _model_name + "/link/" + range_links[i] + "/scan";
+		std::function<void(const gz::msgs::LaserScan &)> callback = [this, i](const gz::msgs::LaserScan & msg) {
+			laserScantoLidarSensorCallback(msg, i);
+		};
+
+		if (!_node.Subscribe(topic, callback)) {
+			PX4_WARN("failed to subscribe to %s", topic.c_str());
+
+			if (required) {
+				return false;
+			}
+		}
 	}
 
 	return true;
@@ -799,20 +811,35 @@ void GZBridge::navSatCallback(const gz::msgs::NavSat &msg)
 	_sensor_gps_pub.publish(sensor_gps);
 }
 
-void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg)
+void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg, uint8_t index)
 {
+	// Read per sample, not from the 1 Hz parameter cache, so a fault set in flight starts on the next sample.
+	int32_t fault = 0;
+	param_get(_param_sim_gz_rng_fault, &fault);
+
+	if (fault & (4 << index)) {
+		return;
+	}
+
 	device::Device::DeviceId id{};
 	id.devid_s.bus_type = device::Device::DeviceBusType::DeviceBusType_SIMULATION;
 	id.devid_s.devtype = DRV_DIST_DEVTYPE_SIM;
 	id.devid_s.bus = 1;
-	id.devid_s.address = 1;
+	id.devid_s.address = index + 1;
 
 	distance_sensor_s report{};
 	report.timestamp = hrt_absolute_time();
 	report.device_id = id.devid;
-	report.min_distance = static_cast<float>(msg.range_min());
-	report.max_distance = static_cast<float>(msg.range_max());
+	// Limits from the airframe's DroneCAN parameters, as the DroneCAN range finder bridge reports them.
+	report.min_distance = _rng_min;
+	report.max_distance = _rng_max;
 	report.current_distance = static_cast<float>(msg.ranges()[0]);
+
+	if ((fault & (1 << index)) && !std::isnan(_range_last[index])) {
+		report.current_distance = _range_last[index];
+	}
+
+	_range_last[index] = report.current_distance;
 	report.variance = 0.0f;
 	report.signal_quality = -1;
 	report.type = distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
@@ -847,7 +874,7 @@ void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg)
 		report.q[3] = q_sensor.Z();
 	}
 
-	_distance_sensor_pub.publish(report);
+	_distance_sensor_pub[index].publish(report);
 }
 
 void GZBridge::laserScanCallback(const gz::msgs::LaserScan &msg)

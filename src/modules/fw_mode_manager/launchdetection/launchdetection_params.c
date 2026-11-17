@@ -79,3 +79,44 @@ PARAM_DEFINE_FLOAT(FW_LAUN_AC_T, 0.05f);
  * @group FW Auto Takeoff
  */
 PARAM_DEFINE_FLOAT(FW_LAUN_MOT_DEL, 0.0f);
+
+/**
+ * Takeoff speed weight
+ *
+ * TECS speed weight in Takeoff once the launch detection starts the motor. 2 flies FW_TKO_AIRSPD with pitch alone, above the Takeoff pitch floor. -1 uses FW_T_SPDWEIGHT.
+ *
+ * @min -1.0
+ * @max 2.0
+ * @decimal 1
+ * @increment 0.1
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_TKO_SPDWT, -1.0f);
+
+/**
+ * Takeoff pitch floor height
+ *
+ * Height above the launch point from which the Takeoff pitch floor is FW_TKO_PMIN_REL instead of FW_TKO_PITCH_MIN, for the rest of the Takeoff. Above 0, a motor failure flag sets the same floor at any height. 0 keeps FW_TKO_PITCH_MIN for the whole Takeoff.
+ *
+ * @unit m
+ * @min 0.0
+ * @max 100.0
+ * @decimal 1
+ * @increment 1.0
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_TKO_PMIN_ALT, 0.0f);
+
+/**
+ * Released Takeoff pitch floor
+ *
+ * Takeoff pitch floor above FW_TKO_PMIN_ALT, and with a motor failure flag, in place of FW_TKO_PITCH_MIN.
+ *
+ * @unit deg
+ * @min -5.0
+ * @max 15.0
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Auto Takeoff
+ */
+PARAM_DEFINE_FLOAT(FW_TKO_PMIN_REL, 2.5f);

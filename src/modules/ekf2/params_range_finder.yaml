@@ -93,6 +93,15 @@ parameters:
       unit: s
       min: 0.1
       max: 5
+    EKF2_RNG_FRZ_EN:
+      description:
+        short: Frozen range sample drop
+        long: If enabled, a downward range finder that repeats its reading bit for
+          bit for 10 new samples, or over 1 m of estimated height change, is fed with
+          signal quality 0 until its reading changes, and the mean of the range finders
+          in range leaves it out.
+      type: boolean
+      default: 0
     EKF2_RNG_K_GATE:
       description:
         short: Gate size used for range finder kinematic consistency check

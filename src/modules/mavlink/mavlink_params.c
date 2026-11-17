@@ -99,16 +99,6 @@ PARAM_DEFINE_INT32(MAV_SIK_RADIO_ID, 0);
 PARAM_DEFINE_INT32(MAV_TYPE, 0);
 
 /**
- * Use/Accept HIL GPS message even if not in HIL mode
- *
- * If set to 1 incoming HIL GPS messages are parsed.
- *
- * @boolean
- * @group MAVLink
- */
-PARAM_DEFINE_INT32(MAV_USEHILGPS, 0);
-
-/**
  * Forward external setpoint messages
  *
  * If set to 1 incoming external setpoint messages will be directly forwarded

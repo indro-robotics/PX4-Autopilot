@@ -55,7 +55,7 @@ using namespace time_literals;
 class PWMSim : public ModuleBase<PWMSim>, public OutputModuleInterface
 {
 public:
-	PWMSim(bool hil_mode_enabled);
+	PWMSim();
 	~PWMSim() override;
 
 	/** @see ModuleBase */

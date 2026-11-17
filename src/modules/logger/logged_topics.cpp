@@ -217,17 +217,6 @@ void LoggedTopics::add_default_topics()
 	add_topic_multi("vehicle_thrust_setpoint", 20, 2);
 	add_topic_multi("vehicle_torque_setpoint", 20, 2);
 
-	// SYS_HITL: default ground truth logging for simulation
-	int32_t sys_hitl = 0;
-	param_get(param_find("SYS_HITL"), &sys_hitl);
-
-	if (sys_hitl >= 1) {
-		add_topic("vehicle_angular_velocity_groundtruth", 10);
-		add_topic("vehicle_attitude_groundtruth", 10);
-		add_topic("vehicle_global_position_groundtruth", 100);
-		add_topic("vehicle_local_position_groundtruth", 20);
-	}
-
 #ifdef CONFIG_ARCH_BOARD_PX4_SITL
 	add_topic("fw_virtual_attitude_setpoint");
 	add_topic("mc_virtual_attitude_setpoint");
