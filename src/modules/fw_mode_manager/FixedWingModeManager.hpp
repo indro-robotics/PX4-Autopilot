@@ -331,6 +331,9 @@ private:
 	// [m] relative height above land point
 	float _landing_approach_entrance_rel_alt{0.0f};
 
+	// [m] AMSL altitude at the start of the straight approach, FLT_MAX while unset
+	float _landing_start_altitude{FLT_MAX};
+
 	uint8_t _landing_abort_status{position_controller_landing_status_s::NOT_ABORTED};
 
 	// organize flare states XXX: need to split into a separate class at some point!

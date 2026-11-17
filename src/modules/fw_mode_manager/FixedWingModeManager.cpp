@@ -1424,16 +1424,8 @@ FixedWingModeManager::control_auto_landing_straight(const hrt_abstime &now, cons
 	const float glide_slope_reference_alt = (_param_fw_lnd_useter.get() ==
 						TerrainEstimateUseOnLanding::kFollowTerrainRelativeLandingGlideSlope) ? terrain_alt : pos_sp_curr.alt;
 
-	float altitude_setpoint;
-
-	if (_current_altitude > glide_slope_reference_alt + glide_slope_rel_alt) {
-		// descend to the glide slope
-		altitude_setpoint = glide_slope_reference_alt + glide_slope_rel_alt;
-
-	} else {
-		// continue horizontally
-		altitude_setpoint = _current_altitude;
-	}
+	// a sink under the slope is climbed back, else it lands short; a final entered under the slope holds its start height
+	const float altitude_setpoint = math::min(glide_slope_reference_alt + glide_slope_rel_alt, _landing_start_altitude);
 
 	// flare at the maximum of the altitude determined by the time before touchdown and a minimum flare altitude
 	const float flare_rel_alt = math::max(_param_fw_lnd_fl_time.get() * _local_pos.vz, _param_fw_lnd_flalt.get());
@@ -2304,6 +2296,8 @@ FixedWingModeManager::reset_landing_state()
 {
 	_time_started_landing = 0;
 
+	_landing_start_altitude = FLT_MAX;
+
 	_flare_states = FlareStates{};
 
 	_lateral_touchdown_position_offset = 0.0f;
@@ -2390,6 +2384,7 @@ FixedWingModeManager::initializeAutoLanding(const hrt_abstime &now, const positi
 		// save time at which we started landing and reset landing abort status
 		reset_landing_state();
 		_time_started_landing = now;
+		_landing_start_altitude = _current_altitude;
 	}
 }
 
