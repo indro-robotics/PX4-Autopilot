@@ -115,6 +115,8 @@ param set-default FW_AIRSPD_MAX 23.0
 param set-default FW_AIRSPD_MIN 14.0
 param set-default FW_AIRSPD_STALL 9.5
 param set-default FW_AIRSPD_TRIM 18.0
+# Level throttle at 18 m/s, estimated for the stock motor and the 14x8 folding propeller.
+param set-default FW_THR_TRIM 0.38
 param set-default FW_P_LIM_MAX 30.0
 # Stock wings at 3.78 kg, 18 % over the airframe limit: pull-ups held near 2 g.
 param set-default FW_P_RMAX_NEG 30.0
@@ -122,7 +124,7 @@ param set-default FW_P_RMAX_POS 30.0
 param set-default FW_R_LIM 50.0
 # Wings held level below 3.5 m: the roll-out from an orbit bank takes that height at landing sink.
 param set-default FW_WING_HEIGHT 3.5
-# Climb rate held low until a full-throttle climb is measured.
+# Climb rate the takeoff commands: the estimated motor climbs faster at any higher value.
 param set-default FW_T_CLMB_MAX 3.0
 param set-default FW_T_HRATE_FF 0.7
 param set-default FW_T_SINK_MAX 3.0
@@ -134,6 +136,17 @@ param set-default FW_TL_LVL_ALT 20
 param set-default FW_WING_SPAN 2.12
 param set-default WEIGHT_BASE 3.78
 param set-default WEIGHT_GROSS 3.78
+
+# RATE CONTROL
+# Rate gains from the autotune of the simulated wing at the aircraft's elevon throw and centre of gravity; FW_PR_I, FW_P_TC and FW_R_TC keep the tune's start values, which tracked pitch rate better than its FW_PR_I. The aircraft's autotune replaces them.
+param set-default FW_PR_FF 0.1868
+param set-default FW_PR_I 0.571
+param set-default FW_PR_P 0.1872
+param set-default FW_P_TC 0.4
+param set-default FW_RR_FF 0.2547
+param set-default FW_RR_I 0.1901
+param set-default FW_RR_P 0.1829
+param set-default FW_R_TC 0.3
 
 # LAUNCH
 param set-default FW_LAUN_AC_T 0.1
