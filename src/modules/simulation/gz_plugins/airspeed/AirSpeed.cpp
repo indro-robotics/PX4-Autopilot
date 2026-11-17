@@ -113,12 +113,12 @@ void AirSpeed::PreUpdate(const gz::sim::UpdateInfo &_info,
 		gzerr << "Unable to get linear velocity" << std::endl;
 	}
 
-	// Compute the air density at the local altitude / temperature
+	// Compute the temperature at the local altitude
 	const float alt_rel = _vehicle_position.Z(); // Z-component from ENU
 	const float alt_amsl = (float)_alt_home + alt_rel;
 	const float temperature_local = TEMPERATURE_MSL - LAPSE_RATE * alt_amsl;
-	const float density_ratio = powf(TEMPERATURE_MSL / temperature_local, 4.256f);
-	const float air_density = AIR_DENSITY_MSL / density_ratio;
+	// The lift model of the wing flies at this density at every height.
+	const float air_density = AIR_DENSITY_MSL;
 
 	// Calculate differential pressure + noise in hPa
 	const float diff_pressure_noise = standard_normal_distribution_(random_generator_) * diff_pressure_stddev_;

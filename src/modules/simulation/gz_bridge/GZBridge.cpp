@@ -60,6 +60,8 @@ GZBridge::GZBridge(const std::string &world, const std::string &model_name) :
 	_model_name(model_name)
 {
 	updateParams();
+	param_get(param_find("UAVCAN_RNG_MIN"), &_rng_min);
+	param_get(param_find("UAVCAN_RNG_MAX"), &_rng_max);
 }
 
 GZBridge::~GZBridge()
@@ -828,8 +830,10 @@ void GZBridge::laserScantoLidarSensorCallback(const gz::msgs::LaserScan &msg, ui
 	distance_sensor_s report{};
 	report.timestamp = hrt_absolute_time();
 	report.device_id = id.devid;
-	report.min_distance = static_cast<float>(msg.range_min());
-	report.max_distance = static_cast<float>(msg.range_max());
+	const bool lidar = range_sensors[index].type == distance_sensor_s::MAV_DISTANCE_SENSOR_LASER;
+	// Lidar limits from the airframe's DroneCAN parameters, as the DroneCAN range finder bridge reports them.
+	report.min_distance = lidar ? _rng_min : static_cast<float>(msg.range_min());
+	report.max_distance = lidar ? _rng_max : static_cast<float>(msg.range_max());
 	// A radar altimeter reports its nearest return across the beam.
 	report.current_distance = static_cast<float>(*std::min_element(msg.ranges().begin(), msg.ranges().end()));
 

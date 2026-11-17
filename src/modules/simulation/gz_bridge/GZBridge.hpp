@@ -178,6 +178,8 @@ private:
 
 	param_t _param_sim_gz_rng_flt{param_find("SIM_GZ_RNG_FLT")};
 	float _range_last{NAN};
+	float _rng_min{0.f};
+	float _rng_max{999.f};
 
 	bool _realtime_clock_set{false};
 	gz::transport::Node _node;

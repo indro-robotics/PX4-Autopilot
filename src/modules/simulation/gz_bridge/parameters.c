@@ -64,6 +64,26 @@ PARAM_DEFINE_INT32(SIM_GZ_EN_LIDAR, 1);
 PARAM_DEFINE_INT32(SIM_GZ_RNG_FLT, 0);
 
 /**
+ * Range finder minimum range
+ *
+ * The DroneCAN parameter of the aircraft; Gazebo bridge reports it as each lidar's minimum distance.
+ *
+ * @unit m
+ * @group Simulation
+ */
+PARAM_DEFINE_FLOAT(UAVCAN_RNG_MIN, 0.0f);
+
+/**
+ * Range finder maximum range
+ *
+ * The DroneCAN parameter of the aircraft; Gazebo bridge reports it as each lidar's maximum distance.
+ *
+ * @unit m
+ * @group Simulation
+ */
+PARAM_DEFINE_FLOAT(UAVCAN_RNG_MAX, 999.0f);
+
+/**
  * Enable optical flow sensor in Gazebo bridge
  *
  * @boolean
