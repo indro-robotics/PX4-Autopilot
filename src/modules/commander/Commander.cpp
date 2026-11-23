@@ -2215,6 +2215,15 @@ void Commander::vtolStatusUpdate()
 
 void Commander::updateTunes()
 {
+	_launch_detection_status_sub.update(&_launch_detection_status);
+
+	// Hold selected on the ground keeps the takeoff setpoint and the launch detector waiting, so the mode is tested too
+	const bool waiting_for_launch = isArmed()
+					&& (_vehicle_status.nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_TAKEOFF)
+					&& !_actuator_armed.kill // a kill leaves the vehicle armed with its outputs disarmed
+					&& (_launch_detection_status.launch_detection_state == launch_detection_status_s::STATE_WAITING_FOR_LAUNCH)
+					&& (hrt_elapsed_time(&_launch_detection_status.timestamp) < 100_ms);
+
 	// play arming and battery warning tunes
 	if (!_arm_tune_played && isArmed()) {
 
@@ -2237,6 +2246,10 @@ void Commander::updateTunes()
 
 	} else if (_multicopter_throw_launch.isReadyToThrow()) {
 		set_tune(tune_control_s::TUNE_ID_ARMING_WARNING);
+
+	} else if (waiting_for_launch && (hrt_elapsed_time(&_vehicle_status.armed_time) > 4000_ms)) {
+		// the 3.2 s arming tune can start 0.6 s late, and a repeating tune requested while it plays is dropped
+		set_tune(tune_control_s::TUNE_ID_LAUNCH_READY);
 
 	} else {
 		set_tune(tune_control_s::TUNE_ID_STOP);

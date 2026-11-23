@@ -55,6 +55,8 @@ bool FixedwingLandDetector::_get_landed_state()
 {
 	// Only trigger flight conditions if we are armed.
 	if (!_armed) {
+		// A filter value kept through a disarm can read as flying on the first armed cycle
+		_airspeed_filtered = _velocity_xy_filtered = _velocity_z_filtered = _xy_accel_filtered = _velocity_rot_filtered = 0.0f;
 		return true;
 	}
 

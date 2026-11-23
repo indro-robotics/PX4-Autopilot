@@ -69,6 +69,7 @@
 #include <uORB/topics/cpuload.h>
 #include <uORB/topics/distance_sensor.h>
 #include <uORB/topics/iridiumsbd_status.h>
+#include <uORB/topics/launch_detection_status.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/mission_result.h>
 #include <uORB/topics/offboard_control_mode.h>
@@ -280,6 +281,7 @@ private:
 	bool _mission_in_progress{false};
 
 	vehicle_land_detected_s	_vehicle_land_detected{};
+	launch_detection_status_s _launch_detection_status{};
 
 	// commander publications
 	actuator_armed_s        _actuator_armed{};
@@ -290,6 +292,7 @@ private:
 	uORB::Subscription					_action_request_sub{ORB_ID(action_request)};
 	uORB::Subscription					_cpuload_sub{ORB_ID(cpuload)};
 	uORB::Subscription					_iridiumsbd_status_sub{ORB_ID(iridiumsbd_status)};
+	uORB::Subscription					_launch_detection_status_sub{ORB_ID(launch_detection_status)};
 	uORB::Subscription					_manual_control_setpoint_sub{ORB_ID(manual_control_setpoint)};
 	uORB::Subscription					_system_power_sub{ORB_ID(system_power)};
 	uORB::Subscription					_vehicle_command_sub{ORB_ID(vehicle_command)};
