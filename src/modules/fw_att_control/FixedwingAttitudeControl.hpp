@@ -139,6 +139,7 @@ private:
 		(ParamFloat<px4::params::FW_AIRSPD_TRIM>) _param_fw_airspd_trim,
 		(ParamBool<px4::params::FW_USE_AIRSPD>) _param_fw_use_airspd,
 
+		(ParamFloat<px4::params::FW_MAN_ASPD_MAX>) _param_fw_man_aspd_max,
 		(ParamFloat<px4::params::FW_MAN_P_MAX>) _param_fw_man_p_max,
 		(ParamFloat<px4::params::FW_MAN_R_MAX>) _param_fw_man_r_max,
 

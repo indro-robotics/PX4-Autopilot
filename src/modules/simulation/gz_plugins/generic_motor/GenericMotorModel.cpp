@@ -207,6 +207,9 @@ public: double momentConstant = 0.016;
 	/// The default value is taken from gazebo_motor_model.h
 public: double motorConstant = 8.54858e-06;
 
+	/// \brief Axial inflow speed per rad/s of rotor speed at which thrust reaches zero, in m; 0 keeps thrust independent of airspeed.
+public: double zeroThrustSpeedPerRadS = 0.0;
+
 	/// \brief Reference input to motor. For MotorType kVelocity, this
 	/// is the reference angular velocity in rad/s.
 public: double refMotorInput = 0.0;
@@ -528,6 +531,8 @@ void GenericMotorModel::Configure(const Entity &_entity,
 			      this->dataPtr->maxRotVelocity, this->dataPtr->maxRotVelocity);
 	sdfClone->Get<double>("motorConstant",
 			      this->dataPtr->motorConstant, this->dataPtr->motorConstant);
+	sdfClone->Get<double>("zeroThrustSpeedPerRadS",
+			      this->dataPtr->zeroThrustSpeedPerRadS, 0.0);
 	sdfClone->Get<double>("momentConstant",
 			      this->dataPtr->momentConstant, this->dataPtr->momentConstant);
 	sdfClone->Get<int>("bidirectionalMotor",
@@ -804,16 +809,32 @@ void GenericMotorModelPrivate::UpdateForcesAndMoments(
 			// Get the direction of the rotor rotation.
 			int realMotorVelocitySign =
 				(realMotorVelocity > 0) - (realMotorVelocity < 0);
-			// Assuming symmetric propellers (or rotors) for the thrust calculation.
-			double thrust = this->turningDirection * realMotorVelocitySign *
-					realMotorVelocity * realMotorVelocity *
-					this->motorConstant;
-
 			using Pose = math::Pose3d;
 			using Vector3 = math::Vector3d;
 
 			Link link(this->linkEntity);
 			const auto worldPose = link.WorldPose(_ecm);
+			const auto worldLinearVel = link.WorldLinearVelocity(_ecm);
+
+			Entity windEntity = _ecm.EntityByComponents(components::Wind());
+			auto windLinearVel =
+				_ecm.Component<components::WorldLinearVelocity>(windEntity);
+			Vector3 windSpeedWorld = windLinearVel->Data();
+			Vector3 relativeWindVelocityWorld = *worldLinearVel - windSpeedWorld;
+
+			// Assuming symmetric propellers (or rotors) for the thrust calculation.
+			const int thrustSign = this->turningDirection * realMotorVelocitySign;
+			double thrustSquare = realMotorVelocity * realMotorVelocity;
+
+			if (this->zeroThrustSpeedPerRadS > 0.0) {
+				// Inflow along the thrust lowers the thrust; the clamp at zero leaves out windmilling drag.
+				const double axialSpeed = std::max(0.0, thrustSign *
+								   relativeWindVelocityWorld.Dot(worldPose->Rot().RotateVector(Vector3(0, 0, 1))));
+				const double zeroThrustRotVel = axialSpeed / this->zeroThrustSpeedPerRadS;
+				thrustSquare = std::max(0.0, thrustSquare - zeroThrustRotVel * zeroThrustRotVel);
+			}
+
+			double thrust = thrustSign * thrustSquare * this->motorConstant;
 
 			// Apply a force to the link.
 			link.AddWorldForce(_ecm,
@@ -841,21 +862,12 @@ void GenericMotorModelPrivate::UpdateForcesAndMoments(
 				return;
 			}
 
-			const auto worldLinearVel = link.WorldLinearVelocity(_ecm);
-
-			Entity windEntity = _ecm.EntityByComponents(components::Wind());
-			auto windLinearVel =
-				_ecm.Component<components::WorldLinearVelocity>(windEntity);
-			Vector3 windSpeedWorld = windLinearVel->Data();
-
 			// Forces from Philppe Martin's and Erwan Salaun's
 			// 2010 IEEE Conference on Robotics and Automation paper
 			// The True Role of Accelerometer Feedback in Quadrotor Control
 			// - \omega * \lambda_1 * V_A^{\perp}
 			Vector3 jointAxis =
 				jointWorldPose.Rot().RotateVector(jointAxisComp->Data().Xyz());
-			Vector3 bodyVelocityWorld = *worldLinearVel;
-			Vector3 relativeWindVelocityWorld = bodyVelocityWorld - windSpeedWorld;
 			Vector3 bodyVelocityPerpendicular =
 				relativeWindVelocityWorld -
 				(relativeWindVelocityWorld.Dot(jointAxis) * jointAxis);

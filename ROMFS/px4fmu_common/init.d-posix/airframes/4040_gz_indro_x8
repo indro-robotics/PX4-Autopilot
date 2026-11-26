@@ -33,24 +33,25 @@ param set-default SENS_BOARD_ROT 0
 # The model carries no Gazebo magnetometer: its frame is mirrored, so the field comes from ground truth and the world magnetic model.
 param set-default SENS_EN_MAGSIM 1
 
-# Elevon travel in degrees, the mean of the aircraft's 37 up and 33 down; the model's joint limits stop the elevon at its effective travel.
+# Elevon angles in degrees, positive trailing edge up: 35 each way, the mean of the aircraft's 37 up and 33 down, about a neutral of 7.3 trailing edge down, the wing's trim at 18 m/s; the model's joint limits stop the elevon at its effective travel.
 param set-default SIM_GZ_SV_FUNC1 201
 param set-default SIM_GZ_SV_FUNC2 202
-param set-default SIM_GZ_SV_MAXA1 35
-param set-default SIM_GZ_SV_MAXA2 35
-param set-default SIM_GZ_SV_MINA1 -35
-param set-default SIM_GZ_SV_MINA2 -35
+param set-default SIM_GZ_SV_MAXA1 27.7
+param set-default SIM_GZ_SV_MAXA2 27.7
+param set-default SIM_GZ_SV_MINA1 -42.3
+param set-default SIM_GZ_SV_MINA2 -42.3
 
 # ESC outputs are rotor speeds in rad/s.
 param set-default SIM_GZ_EC_FUNC1 101
 param set-default SIM_GZ_EC_MAX1 1006
 param set-default SIM_GZ_EC_MIN1 0
+# The ESC's rotor speed is nonlinear in throttle: 0.38 turns the rotor at 483 rad/s.
+param set-default THR_MDL_FAC 0.4
+# Stick thrust in Stabilized falls to zero at 27 m/s, 97 km/h: full stick in level flight holds about 25 m/s.
+param set-default FW_MAN_ASPD_MAX 27.0
 # The bridge reports a stopped rotor as an unarmed ESC, which disarms the launcher wait; the aircraft's PWM ESC reports nothing.
 param set-default FD_ESCS_EN 0
 
 # sim_fail motor: failure injection on, and the stopped motor leaves the allocation.
 param set-default SYS_FAILURE_EN 1
 param set-default CA_FAILURE_MODE 1
-
-# Level trim of the simulated wing at 18 m/s and 3.78 kg; the simulated motor has no airspeed lapse, so the aircraft's value does not hold.
-param set-default FW_THR_TRIM 0.24

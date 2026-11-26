@@ -254,3 +254,17 @@ PARAM_DEFINE_FLOAT(FW_MAN_R_MAX, 45.0f);
  * @group FW Attitude Control
  */
 PARAM_DEFINE_FLOAT(FW_MAN_P_MAX, 30.0f);
+
+/**
+ * Airspeed of zero stick thrust in Stabilized (CAS)
+ *
+ * Above FW_AIRSPD_MAX the thrust from the throttle stick in Stabilized is limited along a line to zero at this calibrated airspeed. Applies only while the airspeed is valid. 0 or a value at or below FW_AIRSPD_MAX disables the limit.
+ *
+ * @unit m/s
+ * @min 0.0
+ * @max 100.0
+ * @decimal 1
+ * @increment 0.5
+ * @group FW Attitude Control
+ */
+PARAM_DEFINE_FLOAT(FW_MAN_ASPD_MAX, 0.0f);

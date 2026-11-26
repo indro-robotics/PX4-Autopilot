@@ -39,6 +39,17 @@ using namespace matrix;
 using math::constrain;
 using math::radians;
 
+static float airspeed_limited_thrust(float thrust, float airspeed, float airspeed_max, float airspeed_zero)
+{
+	// A NaN input fails its comparison and leaves the stick value unchanged.
+	if (!(airspeed > airspeed_max) || !(airspeed_zero > airspeed_max)) {
+		return thrust;
+	}
+
+	const float allowed = math::max((airspeed_zero - airspeed) / (airspeed_zero - airspeed_max), 0.f);
+	return (thrust > allowed) ? allowed : thrust;
+}
+
 FixedwingAttitudeControl::FixedwingAttitudeControl(bool vtol) :
 	ModuleParams(nullptr),
 	ScheduledWorkItem(MODULE_NAME, px4::wq_configurations::nav_and_controllers),
@@ -105,7 +116,14 @@ FixedwingAttitudeControl::vehicle_manual_poll(const float yaw_body)
 				pitch_body = constrain(pitch_body,
 						       -radians(_param_fw_man_p_max.get()), radians(_param_fw_man_p_max.get()));
 
-				_att_sp.thrust_body[0] = (_manual_control_setpoint.throttle + 1.f) * .5f;
+				_airspeed_validated_sub.update();
+				const airspeed_validated_s &airspeed = _airspeed_validated_sub.get();
+				const bool airspeed_valid = _param_fw_use_airspd.get() && PX4_ISFINITE(airspeed.calibrated_airspeed_m_s)
+							    && (hrt_elapsed_time(&airspeed.timestamp) < 1_s);
+
+				_att_sp.thrust_body[0] = airspeed_limited_thrust((_manual_control_setpoint.throttle + 1.f) * .5f,
+							 airspeed_valid ? airspeed.calibrated_airspeed_m_s : NAN,
+							 _param_fw_airspd_max.get(), _param_fw_man_aspd_max.get());
 
 				const Quatf q(Eulerf(roll_body, pitch_body, yaw_body));
 				q.copyTo(_att_sp.q_d);
